@@ -43,3 +43,14 @@ body {
   background: var(--paper);
   color: var(--ink);
 }
+
+/* Print sheets are laid out at true A4 size, so the page needs no margins. */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  body {
+    background: #ffffff;
+  }
+}

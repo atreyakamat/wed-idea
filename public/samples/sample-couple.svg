@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800" width="600" height="800" preserveAspectRatio="xMidYMid slice">
+  <!-- Placeholder "photo" used in template previews: a couple at a Goa sunset. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6b38a"/>
+      <stop offset="0.55" stop-color="#f7d3a6"/>
+      <stop offset="1" stop-color="#fbe7c8"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fb3bf"/>
+      <stop offset="1" stop-color="#5f97a6"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ecd2ad"/>
+      <stop offset="1" stop-color="#e0bf93"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="800" fill="url(#sky)"/>
+  <circle cx="300" cy="430" r="92" fill="#fff1d6" opacity="0.9"/>
+  <rect y="440" width="600" height="120" fill="url(#sea)"/>
+  <path d="M0 470 Q150 458 300 470 T600 470" stroke="#ffffff" stroke-opacity="0.35" stroke-width="5" fill="none"/>
+  <path d="M0 515 Q150 503 300 515 T600 515" stroke="#ffffff" stroke-opacity="0.25" stroke-width="4" fill="none"/>
+  <path d="M0 560 Q300 535 600 560 V800 H0Z" fill="url(#sand)"/>
+  <!-- palm -->
+  <g fill="#6b4f3a" opacity="0.85">
+    <path d="M520 800 Q505 600 470 470 L482 466 Q520 600 538 800Z"/>
+    <path d="M470 470 Q420 420 350 440 Q420 400 474 458Z"/>
+    <path d="M470 470 Q440 380 380 360 Q460 370 480 458Z"/>
+    <path d="M474 466 Q520 390 590 395 Q520 420 486 470Z"/>
+    <path d="M476 468 Q540 450 600 490 Q530 470 484 474Z"/>
+  </g>
+  <!-- couple -->
+  <g>
+    <circle cx="235" cy="455" r="46" fill="#4a3326"/>
+    <path d="M150 800 Q150 560 235 540 Q320 560 322 800Z" fill="#b8475a"/>
+    <path d="M195 470 Q235 420 280 470 Q290 560 260 600 Q235 520 205 600 Q180 560 195 470Z" fill="#2e211b"/>
+    <circle cx="372" cy="440" r="48" fill="#5a3e2e"/>
+    <path d="M330 420 Q372 380 416 420 Q412 395 372 388 Q336 392 330 420Z" fill="#241a15"/>
+    <path d="M285 800 Q285 548 372 528 Q462 548 462 800Z" fill="#f3ead9"/>
+    <path d="M352 540 L372 600 L392 540" fill="none" stroke="#c9a55c" stroke-width="7" stroke-linecap="round"/>
+  </g>
+</svg>

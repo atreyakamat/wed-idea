@@ -23,7 +23,7 @@ export type PaletteKey = keyof Palette;
 /** A palette slot, or a fixed hex colour that never changes. */
 export type ColorRef = PaletteKey | `#${string}`;
 
-export type FontRole = "script" | "serif" | "hand" | "display";
+export type FontRole = "script" | "serif" | "hand" | "display" | "sans" | "mono";
 
 /** Text the couple types in. "static" is fixed template text like "susegad". */
 export type TextField = "names" | "date" | "place" | "static";
@@ -58,20 +58,35 @@ export type DecorationKind =
   | "sun"
   | "heart"
   | "sparkle"
+  | "bow"
+  | "plane"
+  | "paisley"
+  | "mandala"
+  | "dot"
+  | "tape"
+  // Box decorations: positioned by top-left corner with w and h.
   | "band"
-  | "bow";
+  | "sprockets"
+  | "barcode"
+  | "dashedLine";
+
+/** Decorations laid out as boxes (x, y = top-left; w, h) rather than centred squares. */
+export const BOX_DECORATIONS = ["band", "sprockets", "barcode", "dashedLine"] as const;
 
 export type Decoration = {
   kind: DecorationKind;
-  /** Centre of the decoration. For "band", the top-left corner. */
+  /** Centre of the decoration. For box decorations, the top-left corner. */
   x: number;
   y: number;
-  /** Size of the decoration's square box, in mm. */
+  /** Size of the decoration's square box, in mm (unused by box decorations). */
   size: number;
-  /** Width, height and corner radius, only for "band". */
+  /** Width and height, for box decorations. */
   w?: number;
   h?: number;
+  /** Corner radius and optional outline, for "band". */
   radius?: number;
+  outline?: { color: ColorRef; widthMm: number };
+  opacity?: number;
   rotate?: number;
   /** Mirror horizontally. */
   flip?: boolean;
@@ -80,7 +95,7 @@ export type Decoration = {
   filled?: boolean;
 };
 
-export type TemplateStyle = "elegant" | "colour-border" | "doodle" | "theme";
+export type TemplateStyle = "elegant" | "colour-border" | "doodle" | "theme" | "heritage" | "retro";
 
 export type PolaroidTemplate = {
   id: string;
@@ -91,7 +106,10 @@ export type PolaroidTemplate = {
   background: {
     color: ColorRef;
     /** Optional repeating pattern drawn over the background colour. */
-    pattern?: { kind: "dots"; color: ColorRef; spacingMm: number; radiusMm: number };
+    pattern?:
+      | { kind: "dots"; color: ColorRef; spacingMm: number; radiusMm: number }
+      /** Blue-and-white azulejo tiles. */
+      | { kind: "tiles"; color: ColorRef; spacingMm: number };
   };
   photo: {
     x: number;
@@ -99,6 +117,8 @@ export type PolaroidTemplate = {
     w: number;
     h: number;
     stroke?: { color: ColorRef; widthMm: number };
+    /** Tilt in degrees, around the photo's centre (scrapbook look). */
+    rotate?: number;
   };
   decorations: Decoration[];
   text: TextSlot[];

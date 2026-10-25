@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FilterStrip } from "@/components/polaroid/filter-strip";
 import { PolaroidCard } from "@/components/polaroid/polaroid-card";
 import { SAMPLE_PHOTO, SAMPLE_TEXT } from "@/lib/polaroid/samples";
 import { TEMPLATES } from "@/lib/polaroid/templates";
@@ -39,8 +40,8 @@ export default function TemplatesPage() {
       </section>
 
       <section className="mt-16">
-        <h2 className="font-display text-3xl italic">All styles</h2>
-        <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-4">
+        <h2 className="font-display text-3xl italic">All {TEMPLATES.length} styles</h2>
+        <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3">
           {TEMPLATES.map((template) => (
             <li key={template.id} className="flex flex-col items-center text-center">
               <PolaroidCard
@@ -56,6 +57,16 @@ export default function TemplatesPage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="mt-16">
+        <h2 className="font-display text-3xl italic">Photo filters</h2>
+        <p className="mt-2 max-w-xl text-sm text-muted">
+          Every style works with every filter. The couple picks a default; the print uses exactly the look on screen.
+        </p>
+        <div className="mt-6">
+          <FilterStrip uid="templates-filters" />
+        </div>
       </section>
     </main>
   );

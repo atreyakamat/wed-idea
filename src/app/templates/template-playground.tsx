@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { PolaroidCard } from "@/components/polaroid/polaroid-card";
+import { DEFAULT_FILTER_ID, PHOTO_FILTERS } from "@/lib/polaroid/filters";
 import { SAMPLE_PHOTO, SAMPLE_TEXT } from "@/lib/polaroid/samples";
 import { TEMPLATES } from "@/lib/polaroid/templates";
 import { resolvePalette } from "@/lib/polaroid/theme";
@@ -26,6 +27,7 @@ export function TemplatePlayground() {
   const [templateId, setTemplateId] = useState(TEMPLATES[0].id);
   const [text, setText] = useState<CardText>(SAMPLE_TEXT);
   const [overrides, setOverrides] = useState<Partial<Palette>>({});
+  const [filterId, setFilterId] = useState(DEFAULT_FILTER_ID);
 
   const template = TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0];
   const palette = resolvePalette(template, overrides);
@@ -77,7 +79,7 @@ export function TemplatePlayground() {
             />
           </label>
           <label className="flex flex-col gap-1.5 text-sm font-medium sm:col-span-2">
-            Place <span className="font-normal text-muted">(shown on Heirloom Frame)</span>
+            Place <span className="font-normal text-muted">(on styles with a place line)</span>
             <input
               className={fieldClass}
               value={text.place ?? ""}
@@ -86,6 +88,26 @@ export function TemplatePlayground() {
             />
           </label>
         </div>
+
+        <fieldset>
+          <legend className="text-sm font-medium">Photo filter</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {PHOTO_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilterId(f.id)}
+                aria-pressed={f.id === filterId}
+                title={f.description}
+                className={`rounded-full border px-3 py-1 text-sm transition ${
+                  f.id === filterId ? "border-accent bg-accent text-paper" : "border-line hover:border-ink"
+                }`}
+              >
+                {f.name}
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
         <fieldset>
           <legend className="text-sm font-medium">Colours</legend>
@@ -120,6 +142,7 @@ export function TemplatePlayground() {
             palette={palette}
             text={text}
             photoHref={SAMPLE_PHOTO}
+            filterId={filterId}
             className="w-56 shadow-xl sm:w-64"
           />
           <figcaption className="text-xs text-muted">Preview</figcaption>
@@ -131,6 +154,7 @@ export function TemplatePlayground() {
             palette={palette}
             text={text}
             photoHref={SAMPLE_PHOTO}
+            filterId={filterId}
             className="shadow-md"
             width="54mm"
             height="86mm"

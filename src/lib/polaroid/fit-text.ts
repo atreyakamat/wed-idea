@@ -10,6 +10,8 @@ const AVG_CHAR_WIDTH_EM: Record<FontRole, number> = {
   serif: 0.46,
   hand: 0.42,
   display: 0.43,
+  sans: 0.56,
+  mono: 0.62,
 };
 
 export function estimateTextWidthMm(

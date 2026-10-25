@@ -3,7 +3,8 @@ import { estimateTextWidthMm, fitFontSize } from "./fit-text";
 import { A4_HEIGHT_MM, A4_WIDTH_MM, computeSheetLayout } from "./sheet";
 import { getTemplate, TEMPLATES } from "./templates";
 import { eventThemeSchema, resolvePalette, resolveTheme } from "./theme";
-import { CARD_HEIGHT_MM, CARD_WIDTH_MM } from "./types";
+import { DEFAULT_FILTER_ID, getFilter, PHOTO_FILTERS } from "./filters";
+import { BOX_DECORATIONS, CARD_HEIGHT_MM, CARD_WIDTH_MM } from "./types";
 
 describe("text fitting", () => {
   const slot = { font: "script" as const, sizePt: 17, minSizePt: 10, maxWidthMm: 30 };
@@ -79,6 +80,35 @@ describe("A4 sheet layout", () => {
 });
 
 describe("templates", () => {
+  it("include all nine starter styles", () => {
+    expect(TEMPLATES.map((t) => t.id)).toEqual([
+      "elegant-floral",
+      "colour-border",
+      "goa-doodle",
+      "gift-box",
+      "azulejo",
+      "boarding-pass",
+      "mehendi",
+      "scrapbook",
+      "retro-film",
+    ]);
+  });
+
+  it("use only valid hex colours in their palettes", () => {
+    for (const t of TEMPLATES) {
+      for (const colour of Object.values(t.defaultPalette)) expect(colour, t.id).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+
+  it.each(TEMPLATES.map((t) => [t.id, t] as const))("%s keeps box decorations on the card", (_id, t) => {
+    for (const d of t.decorations.filter((d) => (BOX_DECORATIONS as readonly string[]).includes(d.kind))) {
+      expect(d.x).toBeGreaterThanOrEqual(0);
+      expect(d.y).toBeGreaterThanOrEqual(0);
+      expect(d.x + (d.w ?? 0)).toBeLessThanOrEqual(CARD_WIDTH_MM);
+      expect(d.y + (d.h ?? 0)).toBeLessThanOrEqual(CARD_HEIGHT_MM);
+    }
+  });
+
   it("have unique ids", () => {
     expect(new Set(TEMPLATES.map((t) => t.id)).size).toBe(TEMPLATES.length);
   });
@@ -98,7 +128,7 @@ describe("templates", () => {
 
   it.each(TEMPLATES.map((t) => [t.id, t] as const))("%s keeps decorations off the photo", (_id, t) => {
     const p = t.photo;
-    for (const d of t.decorations.filter((d) => d.kind !== "band")) {
+    for (const d of t.decorations.filter((d) => !(BOX_DECORATIONS as readonly string[]).includes(d.kind))) {
       const r = d.size / 2;
       const overlapsX = d.x + r > p.x + 1 && d.x - r < p.x + p.w - 1;
       const overlapsY = d.y + r > p.y + 1 && d.y - r < p.y + p.h - 1;
@@ -109,6 +139,26 @@ describe("templates", () => {
         expect(Math.min(insideX, insideY), `${d.kind} at ${d.x},${d.y}`).toBeLessThanOrEqual(4);
       }
     }
+  });
+});
+
+describe("photo filters", () => {
+  it("offer six looks with unique ids", () => {
+    expect(PHOTO_FILTERS).toHaveLength(6);
+    expect(new Set(PHOTO_FILTERS.map((f) => f.id)).size).toBe(6);
+  });
+
+  it("use well-formed 4 x 5 colour matrices", () => {
+    for (const f of PHOTO_FILTERS) {
+      for (const step of f.steps) {
+        if (step.type === "matrix") expect(step.values, f.id).toHaveLength(20);
+      }
+    }
+  });
+
+  it("fall back to Classic for unknown ids", () => {
+    expect(getFilter("nope").id).toBe(DEFAULT_FILTER_ID);
+    expect(getFilter(null).steps).toHaveLength(0);
   });
 });
 
@@ -123,10 +173,12 @@ describe("event theme", () => {
     const theme = eventThemeSchema.parse(valid);
     expect(theme.text.names).toBe("Priya & Rahul");
     expect(theme.lockedAt).toBeNull();
+    expect(theme.filterId).toBe("classic");
   });
 
   it("rejects unknown templates, bad colours and empty names", () => {
     expect(eventThemeSchema.safeParse({ ...valid, templateId: "nope" }).success).toBe(false);
+    expect(eventThemeSchema.safeParse({ ...valid, filterId: "nope" }).success).toBe(false);
     expect(eventThemeSchema.safeParse({ ...valid, palette: { primary: "red" } }).success).toBe(false);
     expect(eventThemeSchema.safeParse({ ...valid, text: { names: " ", date: "x" } }).success).toBe(false);
     expect(eventThemeSchema.safeParse({ ...valid, text: { names: "x".repeat(41), date: "x" } }).success).toBe(false);

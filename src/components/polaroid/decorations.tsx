@@ -1,12 +1,14 @@
-import type { Decoration } from "@/lib/polaroid/types";
+import { BOX_DECORATIONS, type Decoration } from "@/lib/polaroid/types";
 
-// Original line drawings for templates. Each shape is drawn in a 10 × 10
-// box centred on (0, 0) and scaled to the decoration's size in mm.
+// Original line drawings for templates. Centred shapes are drawn in a
+// 10 × 10 box around (0, 0) and scaled to the decoration's size in mm. Box
+// decorations (bands, sprockets, barcodes, dashed lines) use x, y, w, h.
 
 const UNIT = 10;
 /** Line weight on the printed card, in mm. */
 const STROKE_MM = 0.32;
 
+type CentredKind = Exclude<Decoration["kind"], (typeof BOX_DECORATIONS)[number]>;
 type ShapeProps = { color: string; strokeWidth: number; filled: boolean };
 
 function line(color: string, strokeWidth: number) {
@@ -30,7 +32,9 @@ function Leaf({ x, y, angle, length, color }: { x: number; y: number; angle: num
   );
 }
 
-const shapes: Record<Exclude<Decoration["kind"], "band">, (p: ShapeProps) => React.ReactNode> = {
+const PAISLEY = "M-1 4.6 C-4.6 4.6 -4.8 -0.4 -2 -2.6 C0 -4.2 2.6 -4.8 4.6 -4.4 C2.8 -3.4 2.4 -1.6 2.8 0.4 C3.2 3 1.6 4.6 -1 4.6Z";
+
+const shapes: Record<CentredKind, (p: ShapeProps) => React.ReactNode> = {
   sun: ({ color, strokeWidth }) => (
     <g {...line(color, strokeWidth)}>
       <circle r={2.1} />
@@ -118,13 +122,149 @@ const shapes: Record<Exclude<Decoration["kind"], "band">, (p: ShapeProps) => Rea
       <rect x={-1.1} y={-1.1} width={2.2} height={2.2} rx={0.6} fill="#000000" opacity={0.15} />
     </g>
   ),
+  plane: ({ color }) => (
+    <path
+      fill={color}
+      d="M5 0.4 L1 0.6 L-1.6 4.6 L-2.6 4.6 L-1.2 0.6 L-3.6 0.5 L-4.4 1.6 L-5 1.6 L-4.6 0 L-5 -1.6 L-4.4 -1.6 L-3.6 -0.5 L-1.2 -0.6 L-2.6 -4.6 L-1.6 -4.6 L1 -0.6 L5 -0.4 Q5.4 0 5 0.4Z"
+    />
+  ),
+  paisley: ({ color, strokeWidth }) => (
+    <g>
+      <path d={PAISLEY} {...line(color, strokeWidth)} />
+      <path d={PAISLEY} transform="translate(-0.2 0.5) scale(0.55)" {...line(color, strokeWidth / 0.55)} />
+      <circle cx={-0.9} cy={1.6} r={0.5} fill={color} />
+      {[
+        [-4.1, 2.4],
+        [-4.5, 0.4],
+        [-3.8, -1.6],
+        [-2.2, -3.3],
+        [0, -4.4],
+      ].map(([cx, cy]) => (
+        <circle key={`${cx}${cy}`} cx={cx * 1.12} cy={cy * 1.08} r={0.28} fill={color} />
+      ))}
+    </g>
+  ),
+  mandala: ({ color, strokeWidth }) => (
+    <g>
+      <circle r={4.1} {...line(color, strokeWidth)} />
+      {Array.from({ length: 8 }, (_, i) => (
+        <ellipse key={i} cx={0} cy={-2.4} rx={0.9} ry={1.6} transform={`rotate(${i * 45})`} {...line(color, strokeWidth)} />
+      ))}
+      <circle r={0.9} fill={color} />
+      {Array.from({ length: 16 }, (_, i) => {
+        const a = (i * Math.PI) / 8;
+        return <circle key={i} cx={Math.cos(a) * 4.75} cy={Math.sin(a) * 4.75} r={0.25} fill={color} />;
+      })}
+    </g>
+  ),
+  dot: ({ color }) => <circle r={5} fill={color} />,
+  tape: ({ color }) => (
+    <g>
+      <path
+        fill={color}
+        d="M-5 -1.6 L5 -1.6 L4.4 -1.07 L5 -0.53 L4.4 0 L5 0.53 L4.4 1.07 L5 1.6 L-5 1.6 L-4.4 1.07 L-5 0.53 L-4.4 0 L-5 -0.53 L-4.4 -1.07Z"
+      />
+      <path d="M-4 -1.6 L-3 1.6 M-1.5 -1.6 L-0.5 1.6 M1 -1.6 L2 1.6 M3.5 -1.6 L4.2 0.6" stroke="#ffffff" strokeOpacity={0.35} strokeWidth={0.45} />
+    </g>
+  ),
 };
 
-export function DecorationShape({ decoration, color }: { decoration: Decoration; color: string }) {
+// Fixed bar widths so every card's barcode is the same and reproducible.
+const BARS = [2, 1, 3, 1, 1, 2, 1, 4, 2, 1, 1, 3, 2, 2, 1, 1, 3, 1, 2, 4, 1, 2, 1, 1, 2, 3];
+
+function BoxShape({ d, color }: { d: Decoration; color: string }) {
+  const w = d.w ?? 0;
+  const h = d.h ?? 0;
+
+  switch (d.kind) {
+    case "band":
+      return (
+        <rect
+          x={d.x}
+          y={d.y}
+          width={w}
+          height={h}
+          rx={d.radius}
+          fill={color}
+          stroke={d.outline ? undefined : "none"}
+        />
+      );
+    case "sprockets": {
+      const holeH = Math.min(1.7, w * 0.75);
+      const pitch = 3.6;
+      const count = Math.floor((h + pitch - holeH) / pitch);
+      const top = d.y + (h - (count - 1) * pitch - holeH) / 2;
+      return (
+        <g fill={color}>
+          {Array.from({ length: count }, (_, i) => (
+            <rect key={i} x={d.x} y={top + i * pitch} width={w} height={holeH} rx={0.35} />
+          ))}
+        </g>
+      );
+    }
+    case "barcode": {
+      const unit = w / BARS.reduce((sum, b) => sum + b + 1, 0);
+      // Left edge of each bar: running total of the bars and gaps before it.
+      const starts = BARS.map((_, i) => d.x + BARS.slice(0, i).reduce((sum, b) => sum + (b + 1) * unit, 0));
+      return (
+        <g fill={color}>
+          {BARS.map((b, i) => (
+            <rect key={i} x={starts[i]} y={d.y} width={b * unit} height={h} />
+          ))}
+        </g>
+      );
+    }
+    case "dashedLine":
+      return (
+        <line
+          x1={d.x}
+          x2={d.x + w}
+          y1={d.y}
+          y2={d.y}
+          stroke={color}
+          strokeWidth={0.25}
+          strokeDasharray="1.2 0.9"
+          strokeLinecap="round"
+        />
+      );
+    default:
+      return null;
+  }
+}
+
+function isBox(kind: Decoration["kind"]): kind is (typeof BOX_DECORATIONS)[number] {
+  return (BOX_DECORATIONS as readonly string[]).includes(kind);
+}
+
+export function DecorationShape({
+  decoration,
+  color,
+  outlineColor,
+}: {
+  decoration: Decoration;
+  color: string;
+  outlineColor?: string;
+}) {
   const d = decoration;
 
-  if (d.kind === "band") {
-    return <rect x={d.x} y={d.y} width={d.w ?? 0} height={d.h ?? 0} rx={d.radius} fill={color} />;
+  if (isBox(d.kind)) {
+    return (
+      <g opacity={d.opacity}>
+        <BoxShape d={d} color={color} />
+        {d.kind === "band" && d.outline && outlineColor ? (
+          <rect
+            x={d.x}
+            y={d.y}
+            width={d.w ?? 0}
+            height={d.h ?? 0}
+            rx={d.radius}
+            fill="none"
+            stroke={outlineColor}
+            strokeWidth={d.outline.widthMm}
+          />
+        ) : null}
+      </g>
+    );
   }
 
   const scale = d.size / UNIT;
@@ -137,8 +277,8 @@ export function DecorationShape({ decoration, color }: { decoration: Decoration;
     .join(" ");
 
   return (
-    <g transform={transform}>
-      {shapes[d.kind]({ color, strokeWidth: STROKE_MM / scale, filled: Boolean(d.filled) })}
+    <g transform={transform} opacity={d.opacity}>
+      {shapes[d.kind as CentredKind]({ color, strokeWidth: STROKE_MM / scale, filled: Boolean(d.filled) })}
     </g>
   );
 }

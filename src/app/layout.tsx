@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Instrument_Serif, Inter } from "next/font/google";
 import "./globals.css";
 
 const body = Inter({ variable: "--font-body", subsets: ["latin"] });
-const heading = Fraunces({ variable: "--font-heading", subsets: ["latin"] });
+// Elegant italic serif for headings.
+const heading = Instrument_Serif({
+  variable: "--font-heading",
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+});
 
 export const metadata: Metadata = {
   title: {

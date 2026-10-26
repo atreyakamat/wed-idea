@@ -1,20 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy-session";
 
-const LOGIN_PATH = "/admin/login";
-
 /**
- * Refreshes the Supabase session on admin routes and sends signed-out
- * visitors to the login page. This is a fast first gate only: every admin
- * page and Server Action still checks the admin role itself (src/lib/auth.ts).
+ * Refreshes the Supabase session on app routes and sends signed-out visitors
+ * to the login page. This is a fast first gate only: every page and Server
+ * Action checks the user and their studio role itself (src/lib/auth.ts).
  */
 export async function proxy(request: NextRequest) {
   const { response, isSignedIn } = await updateSession(request);
-  const { pathname } = request.nextUrl;
 
-  if (!isSignedIn && pathname !== LOGIN_PATH) {
-    const loginUrl = new URL(LOGIN_PATH, request.url);
-    loginUrl.searchParams.set("next", pathname);
+  if (!isSignedIn) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -22,5 +19,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/dashboard/:path*", "/onboarding"],
 };

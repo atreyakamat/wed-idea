@@ -1,11 +1,12 @@
+const APP_PREFIXES = ["/dashboard", "/onboarding"];
+
 /**
- * Only allows redirects to admin pages on this site. Blocks open redirects
- * like "//evil.com" or "https://evil.com" passed in the ?next= parameter.
+ * Only allows redirects to pages inside the app on this site. Blocks open
+ * redirects like "//evil.com" or "https://evil.com" passed in ?next=.
  */
-export function safeAdminRedirect(next: unknown, fallback = "/admin"): string {
+export function safeAppRedirect(next: unknown, fallback = "/dashboard"): string {
   if (typeof next !== "string") return fallback;
-  if (!next.startsWith("/admin")) return fallback;
   if (next.startsWith("//") || next.includes("\\")) return fallback;
-  if (next.startsWith("/admin/login")) return fallback;
-  return next;
+  const allowed = APP_PREFIXES.some((p) => next === p || next.startsWith(`${p}/`) || next.startsWith(`${p}?`));
+  return allowed ? next : fallback;
 }

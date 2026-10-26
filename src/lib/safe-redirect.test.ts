@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { safeAdminRedirect } from "./safe-redirect";
+import { safeAppRedirect } from "./safe-redirect";
 
-describe("safeAdminRedirect", () => {
-  it("keeps admin paths", () => {
-    expect(safeAdminRedirect("/admin/events/123")).toBe("/admin/events/123");
+describe("safeAppRedirect", () => {
+  it.each(["/dashboard", "/dashboard/events/123", "/dashboard?tab=design", "/onboarding"])("keeps %s", (path) => {
+    expect(safeAppRedirect(path)).toBe(path);
   });
 
   it.each([
-    ["external URL", "https://evil.com/admin"],
+    ["external URL", "https://evil.com/dashboard"],
     ["protocol-relative URL", "//evil.com"],
-    ["non-admin path", "/e/priya-rahul"],
-    ["backslash trick", "/admin\\..\\evil"],
-    ["login loop", "/admin/login"],
+    ["public page", "/e/priya-rahul"],
+    ["lookalike prefix", "/dashboardevil"],
+    ["backslash trick", "/dashboard\\..\\evil"],
+    ["login page", "/login"],
     ["missing value", undefined],
   ])("falls back for %s", (_label, next) => {
-    expect(safeAdminRedirect(next)).toBe("/admin");
+    expect(safeAppRedirect(next)).toBe("/dashboard");
   });
 });

@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/* Design tokens. Pages use these names (bg-paper, text-ink, border-line…)
+   rather than raw colours, so dark mode and per-event themes can swap them. */
+:root {
+  --paper: #fbf8f3;
+  --surface: #ffffff;
+  --ink: #221c18;
+  --muted: #6f655d;
+  --line: #e7dfd5;
+  --accent: #c2546b;
+  --success: #2f7a4f;
+  --danger: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #171310;
+    --surface: #211b17;
+    --ink: #f3ece4;
+    --muted: #b3a79c;
+    --line: #3a312a;
+    --accent: #e7849a;
+    --success: #6cc493;
+    --danger: #f2b8b5;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-heading), ui-serif, Georgia, serif;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}

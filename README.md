@@ -12,8 +12,12 @@ Guests are photographed at a custom backdrop and get a private gallery link on W
    - price per print, copy and budget limits;
    - a brief for the client's custom backdrop.
 3. **The couple picks a polaroid design**, choosing one of 9 styles, the names, date, colours and a photo filter, and locks it. An event can't go live until its design is locked.
-4. **At the event**, photos are taken on a phone or SLR and tagged to the guest's WhatsApp number. The locked design is applied automatically, and the guest gets their private link. *(Coming next.)*
-5. **After the event**, prints are made in batches on A4 sheets, couriered, and the couple gets one statement for prints plus courier.
+4. **At the event**, an operator opens the capture screen (`/dashboard/events/<id>/capture`) on a phone or laptop:
+   1. Enter the guest's WhatsApp number and tick consent. The guest gets a code like `A17`, and the same number later resumes the same guest.
+   2. Take photos with the phone camera, or add SLR shots from the laptop. Photos are resized and stripped of location data in the browser, then uploaded straight to private storage.
+   3. Tap **Send on WhatsApp**. WhatsApp opens with the guest's gallery link ready to send.
+5. **The guest** opens their private link (`/g/<token>`). They see their photos in the couple's polaroid design until the gallery expires, and can save each one as a 300 dpi PNG or download the original.
+6. **After the event**, prints are made in batches on A4 sheets, couriered, and the couple gets one statement for prints plus courier. *(Print ordering coming next.)*
 
 ## Stack
 
@@ -30,7 +34,8 @@ src/
     (auth)/            /login, /signup, sign-in and sign-up actions
     auth/callback/     email confirmation link handler
     onboarding/        create your studio
-    dashboard/         events list, new event, event page (design, prints, details, status)
+    dashboard/         events list, new event, event page (design, prints, details, status), capture screen
+    g/[token]/         a guest's private gallery
     templates/         public template gallery and A4 print sheet preview
   components/
     dashboard/         event forms, design editor, status controls
@@ -38,6 +43,8 @@ src/
     ui/                form fields and buttons
   lib/
     auth.ts            requireUser / requireStudio / requireStudioManager
+    capture/           photo processing, storage paths, WhatsApp message and link
+    gallery/           guest gallery lookup (by secret token) and polaroid PNG export
     events/            event form parsing (IST), status rules, design defaults, queries
     polaroid/          templates, filters, text fitting, sheet layout, theme schema
     domain/            guest codes, money, phone, billing, order window
@@ -54,7 +61,11 @@ supabase/
 - **Studios are isolated by row-level security.** Members see only their own studio's events, guests, photos and orders, so another studio's event returns 404.
 - **Roles:** owners and admins manage settings, design and orders; operators can read events and add guests and photos. Owners can't remove themselves, so a studio always keeps an owner.
 - **Guests never query the database directly.** Their pages run on the server, check the guest's secret link token, then read data with the service-role key.
-- **Photos** live in a private bucket under `<studio id>/<event id>/`, and storage rules only let members of that studio read or write there.
+- **Photos** live in a private bucket under `<studio id>/<event id>/<guest id>/`. Storage rules only let members of that studio read or write there. The database also rejects a photo whose files sit outside its event's folder, or whose guest belongs to another event. Guests see their photos through signed links that last 1 hour.
+- **Guest galleries** are opened by a 48-character secret token, looked up on the server.
+  - Pages are marked `noindex`, and links never leak through the Referer header.
+  - Malformed links get a 404 from the proxy.
+  - After the gallery's expiry date the photos are hidden. Deleting the files automatically is still to do.
 - **Platform admins** (`admin_users`) can see every studio for support. They are added by hand in SQL only.
 - **Data formats:** money is stored as whole paise and phone numbers in E.164 (`+919812345678`). Event times are entered in India time.
 

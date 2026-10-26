@@ -93,7 +93,8 @@ function Lightbox({
     onStep(delta);
   };
 
-  // Arrow keys move between photos; Escape is handled by <dialog> itself.
+  // Arrow keys and swipes move between photos. Escape (native to <dialog>),
+  // the Close button and a tap on the dimmed area all close it.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog || index === null) return;
@@ -101,8 +102,28 @@ function Lightbox({
       if (e.key === "ArrowRight") go(1);
       if (e.key === "ArrowLeft") go(-1);
     };
+    const onBackdrop = (e: MouseEvent) => {
+      if (e.target === dialog) dialog.close();
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      touchX.current = e.touches[0].clientX;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (touchX.current === null) return;
+      const dx = e.changedTouches[0].clientX - touchX.current;
+      if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+      touchX.current = null;
+    };
     dialog.addEventListener("keydown", onKey);
-    return () => dialog.removeEventListener("keydown", onKey);
+    dialog.addEventListener("click", onBackdrop);
+    dialog.addEventListener("touchstart", onTouchStart, { passive: true });
+    dialog.addEventListener("touchend", onTouchEnd);
+    return () => {
+      dialog.removeEventListener("keydown", onKey);
+      dialog.removeEventListener("click", onBackdrop);
+      dialog.removeEventListener("touchstart", onTouchStart);
+      dialog.removeEventListener("touchend", onTouchEnd);
+    };
   });
 
   async function savePolaroid() {
@@ -126,17 +147,6 @@ function Lightbox({
       onClose={() => {
         setError(null);
         onClosed();
-      }}
-      // A click on the dimmed area (the dialog box itself, not its content) closes it.
-      onClick={(e) => {
-        if (e.target === e.currentTarget) e.currentTarget.close();
-      }}
-      onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
-      onTouchEnd={(e) => {
-        if (touchX.current === null) return;
-        const dx = e.changedTouches[0].clientX - touchX.current;
-        if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
-        touchX.current = null;
       }}
       className="m-0 h-dvh max-h-none w-screen max-w-none bg-[#171310]/95 p-0 text-white backdrop:bg-black/30 backdrop:backdrop-blur-sm"
     >

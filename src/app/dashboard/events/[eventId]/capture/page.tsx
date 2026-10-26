@@ -20,7 +20,7 @@ export default function CapturePage({ params }: PageProps<"/dashboard/events/[ev
   );
 }
 
-async function Capture({ params }: { params: PageProps<"/dashboard/events/[eventId]/capture">["params"] }) {
+async function Capture({ params }: Readonly<{ params: PageProps<"/dashboard/events/[eventId]/capture">["params"] }>) {
   const { eventId } = await params;
   const { studio } = await requireStudio(`/dashboard/events/${eventId}/capture`);
   const event = await getEvent(studio.id, eventId);

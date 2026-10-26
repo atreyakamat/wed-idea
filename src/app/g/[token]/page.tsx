@@ -28,7 +28,12 @@ export default function GalleryPage({ params }: PageProps<"/g/[token]">) {
   );
 }
 
-async function Gallery({ params }: { params: PageProps<"/g/[token]">["params"] }) {
+function photoCountLine(count: number): string {
+  if (count === 0) return "Your photos will appear here as soon as they're taken.";
+  return `${count} photo${count === 1 ? "" : "s"} from the backdrop. Tap one to save it.`;
+}
+
+async function Gallery({ params }: Readonly<{ params: PageProps<"/g/[token]">["params"] }>) {
   await connection();
   const { token } = await params;
   const gallery = await getGuestGallery(token);
@@ -59,11 +64,7 @@ async function Gallery({ params }: { params: PageProps<"/g/[token]">["params"] }
       <header className="text-center">
         <p className="font-display text-lg italic text-accent">{gallery.coupleNames}</p>
         <h1 className="mt-2 font-display text-4xl italic sm:text-5xl">{firstName ? `${firstName}, your polaroids` : "Your polaroids"}</h1>
-        <p className="mx-auto mt-3 max-w-md text-muted">
-          {count === 0
-            ? "Your photos will appear here as soon as they're taken."
-            : `${count} photo${count === 1 ? "" : "s"} from the backdrop. Tap one to save it.`}
-        </p>
+        <p className="mx-auto mt-3 max-w-md text-muted">{photoCountLine(count)}</p>
         <p className="mt-4 inline-block rounded-full bg-line/70 px-4 py-1.5 text-xs font-medium text-muted">
           Available until {formatIstDate(gallery.expiresAt)}
         </p>

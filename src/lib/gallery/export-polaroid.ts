@@ -7,8 +7,9 @@ const MM_PER_INCH = 25.4;
 async function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
+    reader.onload = () =>
+      typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Couldn't read the file."));
+    reader.onerror = () => reject(reader.error ?? new Error("Couldn't read the file."));
     reader.readAsDataURL(blob);
   });
 }

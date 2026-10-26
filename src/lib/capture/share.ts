@@ -3,7 +3,9 @@
 export const GUEST_TOKEN_PATTERN = /^[0-9a-f]{48}$/;
 
 export function galleryUrl(siteUrl: string, accessToken: string): string {
-  return `${siteUrl.replace(/\/+$/, "")}/g/${accessToken}`;
+  let base = siteUrl;
+  while (base.endsWith("/")) base = base.slice(0, -1);
+  return `${base}/g/${accessToken}`;
 }
 
 const expiryFormat = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", timeZone: "Asia/Kolkata" });

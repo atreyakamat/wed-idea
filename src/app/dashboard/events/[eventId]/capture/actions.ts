@@ -1,5 +1,6 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireStudio } from "@/lib/auth";
 import { photoPaths, UUID_PATTERN } from "@/lib/capture/photos";
 import { GUEST_COLUMNS, toCaptureGuest } from "@/lib/capture/queries";
@@ -7,7 +8,10 @@ import type { StartGuestState } from "@/lib/capture/types";
 import { pickGuestCode } from "@/lib/domain/guest-code";
 import { normalizePhone } from "@/lib/domain/phone";
 import { getEvent } from "@/lib/events/queries";
+import { formText } from "@/lib/form-data";
 import { createClient } from "@/lib/supabase/server";
+
+type GuestRow = Parameters<typeof toCaptureGuest>[0];
 
 /** Any studio member (operators included) can capture, but only at a live event. */
 async function liveEvent(eventId: string) {
@@ -18,83 +22,86 @@ async function liveEvent(eventId: string) {
   return { user, studio, event };
 }
 
+function parseGuestForm(formData: FormData) {
+  const values = { phone: formText(formData, "phone"), name: formText(formData, "name") };
+  const fieldErrors: Record<string, string> = {};
+  const phone = normalizePhone(values.phone);
+  if (!phone) fieldErrors.phone = "Enter a WhatsApp number, like 98123 45678";
+  if (values.name.length > 120) fieldErrors.name = "Keep the name under 120 characters";
+  if (formData.get("consent") !== "on") fieldErrors.consent = "The guest needs to agree first";
+  return { values, phone, fieldErrors };
+}
+
+async function findGuest(supabase: SupabaseClient, eventId: string, phone: string) {
+  const { data, error } = await supabase
+    .from("guests")
+    .select(GUEST_COLUMNS)
+    .eq("event_id", eventId)
+    .eq("phone_e164", phone)
+    .maybeSingle<GuestRow>();
+  if (error) throw new Error("Couldn't look up the guest. Try again.");
+  return data;
+}
+
+/** Updates the guest's name if a new one was typed; keeps the old row otherwise. */
+async function refreshName(supabase: SupabaseClient, row: GuestRow, name: string): Promise<GuestRow> {
+  if (!name || name === row.name) return row;
+  const { data, error } = await supabase.from("guests").update({ name }).eq("id", row.id).select(GUEST_COLUMNS).single<GuestRow>();
+  return error ? row : data;
+}
+
+/**
+ * Inserts a new guest with an unused code. Retries when two operators race:
+ * either for the same code, or for the same phone number (then the existing
+ * guest is returned).
+ */
+async function createGuest(
+  supabase: SupabaseClient,
+  eventId: string,
+  phone: string,
+  name: string,
+): Promise<{ row: GuestRow; returning: boolean }> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const taken = await supabase.from("guests").select("code").eq("event_id", eventId);
+    if (taken.error) break;
+
+    const code = pickGuestCode(new Set(taken.data.map((g) => g.code)));
+    const inserted = await supabase
+      .from("guests")
+      .insert({ event_id: eventId, code, phone_e164: phone, name: name || null, consent_at: new Date().toISOString() })
+      .select(GUEST_COLUMNS)
+      .single<GuestRow>();
+
+    if (!inserted.error) return { row: inserted.data, returning: false };
+    if (inserted.error.code !== "23505") break;
+
+    const existing = await findGuest(supabase, eventId, phone);
+    if (existing) return { row: existing, returning: true };
+  }
+  throw new Error("Couldn't create the guest. Try again.");
+}
+
 /**
  * Starts (or resumes) a guest by WhatsApp number. Returning guests keep
  * their code and gallery link; new guests get a fresh code.
  */
 export async function startGuest(eventId: string, _prev: StartGuestState, formData: FormData): Promise<StartGuestState> {
-  const values = {
-    phone: String(formData.get("phone") ?? "").trim(),
-    name: String(formData.get("name") ?? "").trim(),
-  };
-  const fieldErrors: Record<string, string> = {};
-
-  const phone = normalizePhone(values.phone);
-  if (!phone) fieldErrors.phone = "Enter a WhatsApp number, like 98123 45678";
-  if (values.name.length > 120) fieldErrors.name = "Keep the name under 120 characters";
-  if (formData.get("consent") !== "on") fieldErrors.consent = "The guest needs to agree first";
+  const { values, phone, fieldErrors } = parseGuestForm(formData);
   if (Object.keys(fieldErrors).length || !phone) return { error: null, fieldErrors, values };
 
-  let event;
   try {
-    ({ event } = await liveEvent(eventId));
+    const { event } = await liveEvent(eventId);
+    const supabase = await createClient();
+    const existing = await findGuest(supabase, event.id, phone);
+    if (existing) {
+      const row = await refreshName(supabase, existing, values.name);
+      return { error: null, guest: toCaptureGuest(row), returning: true };
+    }
+    const created = await createGuest(supabase, event.id, phone, values.name);
+    return { error: null, guest: toCaptureGuest(created.row), returning: created.returning };
   } catch (e) {
     return { error: (e as Error).message, values };
   }
-
-  const supabase = await createClient();
-  const existing = await supabase
-    .from("guests")
-    .select(GUEST_COLUMNS)
-    .eq("event_id", event.id)
-    .eq("phone_e164", phone)
-    .maybeSingle();
-  if (existing.error) return { error: "Couldn't look up the guest. Try again.", values };
-
-  if (existing.data) {
-    let row = existing.data;
-    if (values.name && values.name !== row.name) {
-      const updated = await supabase.from("guests").update({ name: values.name }).eq("id", row.id).select(GUEST_COLUMNS).single();
-      if (!updated.error) row = updated.data;
-    }
-    return { error: null, guest: toCaptureGuest(row as Parameters<typeof toCaptureGuest>[0]), returning: true };
-  }
-
-  // New guest: pick an unused code, retrying if two operators race for it.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const taken = await supabase.from("guests").select("code").eq("event_id", event.id);
-    if (taken.error) return { error: "Couldn't create the guest. Try again.", values };
-
-    let code: string;
-    try {
-      code = pickGuestCode(new Set(taken.data.map((g) => g.code)));
-    } catch {
-      return { error: "This event has run out of guest codes.", values };
-    }
-
-    const inserted = await supabase
-      .from("guests")
-      .insert({
-        event_id: event.id,
-        code,
-        phone_e164: phone,
-        name: values.name || null,
-        consent_at: new Date().toISOString(),
-      })
-      .select(GUEST_COLUMNS)
-      .single();
-
-    if (!inserted.error) {
-      return { error: null, guest: toCaptureGuest(inserted.data as Parameters<typeof toCaptureGuest>[0]), returning: false };
-    }
-    if (inserted.error.code !== "23505") return { error: "Couldn't create the guest. Try again.", values };
-    // Unique clash: either the code was just taken, or the same number was added
-    // by another operator. Loop; the lookup above handles the second case next time.
-    const again = await supabase.from("guests").select(GUEST_COLUMNS).eq("event_id", event.id).eq("phone_e164", phone).maybeSingle();
-    if (again.data) return { error: null, guest: toCaptureGuest(again.data as Parameters<typeof toCaptureGuest>[0]), returning: true };
-  }
-
-  return { error: "Couldn't create the guest. Try again.", values };
 }
 
 /**

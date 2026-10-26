@@ -33,7 +33,7 @@ type Props = {
 const initialState: StartGuestState = { error: null };
 const UPLOADS_AT_ONCE = 2;
 
-export function CaptureStation({ eventId, organizationId, coupleNames, galleryExpiresAt, siteUrl, design, recentGuests }: Props) {
+export function CaptureStation({ eventId, organizationId, coupleNames, galleryExpiresAt, siteUrl, design, recentGuests }: Readonly<Props>) {
   const router = useRouter();
   const start = useMemo(() => startGuest.bind(null, eventId), [eventId]);
   const [state, formAction, starting] = useActionState(start, initialState);
@@ -94,14 +94,17 @@ export function CaptureStation({ eventId, organizationId, coupleNames, galleryEx
 
   async function handleFiles(list: FileList | null) {
     if (!guest || !list?.length) return;
-    const files = [...list];
-    // Upload a couple at a time so a phone on venue Wi-Fi doesn't choke.
-    const queue = [...files];
-    await Promise.all(
-      Array.from({ length: Math.min(UPLOADS_AT_ONCE, queue.length) }, async () => {
-        for (let file = queue.shift(); file; file = queue.shift()) await uploadOne(file, guest);
-      }),
-    );
+    const current = guest;
+    // Upload a couple at a time so a phone on venue Wi-Fi doesn't choke:
+    // each worker takes the next file when it finishes the last.
+    const queue = [...list];
+    const worker = async (): Promise<void> => {
+      const file = queue.shift();
+      if (!file) return;
+      await uploadOne(file, current);
+      return worker();
+    };
+    await Promise.all(Array.from({ length: Math.min(UPLOADS_AT_ONCE, queue.length) }, worker));
   }
 
   function nextGuest() {

@@ -17,7 +17,7 @@ create table auth.users (id uuid primary key);
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create schema storage;
-create table storage.buckets (id text primary key, name text, public boolean);
+create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
 create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
 alter table storage.objects enable row level security;
 grant usage on schema public, auth, storage to anon, authenticated;
@@ -203,6 +203,51 @@ describe("storage", () => {
   it("hides other studios' files", async () => {
     expect(await count(OWNER_B, "storage.objects")).toBe(0);
     expect(await count(OWNER_A, "storage.objects")).toBe(1);
+  });
+});
+
+describe("capture rules", () => {
+  it("keeps photo files inside the event's own folder", async () => {
+    await expect(
+      as("authenticated", OPERATOR_A, `insert into public.photos (event_id, guest_id, storage_path) values ('${eventA}', '${guestA}', '${orgB}/${eventB}/x.jpg')`),
+    ).rejects.toThrow();
+    await expect(
+      as(
+        "authenticated",
+        OPERATOR_A,
+        `insert into public.photos (event_id, guest_id, storage_path, thumb_path) values ('${eventA}', '${guestA}', '${orgA}/${eventA}/y.jpg', 'elsewhere/y.jpg')`,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("stores a thumbnail path next to the full photo", async () => {
+    const rows = await as<{ thumb_path: string }>(
+      "authenticated",
+      OPERATOR_A,
+      `insert into public.photos (event_id, guest_id, storage_path, thumb_path) values ('${eventA}', '${guestA}', '${orgA}/${eventA}/z.jpg', '${orgA}/${eventA}/z.thumb.jpg') returning thumb_path`,
+    );
+    expect(rows[0].thumb_path).toBe(`${orgA}/${eventA}/z.thumb.jpg`);
+    await db.exec(`delete from public.photos where storage_path = '${orgA}/${eventA}/z.jpg'`);
+  });
+
+  it("rejects a guest from another event", async () => {
+    const guestB = (
+      await as<{ id: string }>(
+        "authenticated",
+        OWNER_B,
+        `insert into public.guests (event_id, code, phone_e164, consent_at) values ('${eventB}', 'B10', '+919800011111', now()) returning id`,
+      )
+    )[0].id;
+    await expect(
+      db.exec(`insert into public.photos (event_id, guest_id, storage_path) values ('${eventA}', '${guestB}', '${orgA}/${eventA}/w.jpg')`),
+    ).rejects.toThrow();
+  });
+
+  it("limits the photo bucket to images up to 15 MB", async () => {
+    const { rows } = await db.query<{ file_size_limit: number; allowed_mime_types: string[] }>(
+      "select file_size_limit::int, allowed_mime_types from storage.buckets where id = 'event-photos'",
+    );
+    expect(rows[0]).toEqual({ file_size_limit: 15 * 1024 * 1024, allowed_mime_types: ["image/jpeg", "image/png", "image/webp"] });
   });
 });
 

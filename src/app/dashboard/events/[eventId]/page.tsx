@@ -10,6 +10,7 @@ import { canManage, requireStudio } from "@/lib/auth";
 import { formatInr } from "@/lib/domain/money";
 import { isDesignLocked, themeForEvent } from "@/lib/events/design";
 import { galleryDays } from "@/lib/events/form";
+import { eventCounts } from "@/lib/capture/queries";
 import { getEvent } from "@/lib/events/queries";
 import { canUnlockDesign, checkTransition, nextStatuses } from "@/lib/events/status";
 import { formatIstDate, formatIstTime, isoToIstInput } from "@/lib/events/time";
@@ -39,6 +40,7 @@ async function EventView({ params }: { params: PageProps<"/dashboard/events/[eve
   const manager = canManage(studio.role);
   const theme = themeForEvent(event);
   const locked = isDesignLocked(event.theme);
+  const counts = await eventCounts(event.id);
 
   const statusOptions = nextStatuses(event.status).map((to) => {
     const check = checkTransition(event.status, to, locked);
@@ -66,11 +68,22 @@ async function EventView({ params }: { params: PageProps<"/dashboard/events/[eve
               {event.venue ? ` · ${event.venue}` : ""} · /e/{event.slug}
             </p>
           </div>
-          {manager ? <StatusControls options={statusOptions} /> : null}
+          <div className="flex flex-wrap items-start gap-3">
+            {event.status === "live" ? (
+              <Link
+                href={`/dashboard/events/${event.id}/capture`}
+                className="rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-paper hover:opacity-90"
+              >
+                Open capture
+              </Link>
+            ) : null}
+            {manager ? <StatusControls options={statusOptions} /> : null}
+          </div>
         </div>
       </div>
 
-      <dl className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-4">
+      <dl className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-3 lg:grid-cols-5">
+        <Stat label="Guests · photos" value={`${counts.guests} · ${counts.photos}`} />
         <Stat label="Order window" value={`${formatIstTime(event.orders_open_at ?? event.starts_at)}–${formatIstTime(event.orders_close_at ?? event.ends_at)}`} />
         <Stat label="Price per print" value={formatInr(event.print_price_paise)} />
         <Stat label="Limits" value={[event.max_copies_per_guest ? `${event.max_copies_per_guest} per guest` : null, event.budget_cap_paise ? `${formatInr(event.budget_cap_paise)} cap` : null].filter(Boolean).join(" · ") || "None"} />

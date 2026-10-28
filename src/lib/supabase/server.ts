@@ -1,6 +1,7 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { publicEnv } from "@/lib/env";
 
 /**
@@ -10,6 +11,9 @@ import { publicEnv } from "@/lib/env";
 export async function createClient() {
   const env = publicEnv();
   const cookieStore = await cookies();
+  // The client starts a background session check that reads the clock.
+  // Wait for the real request so that never runs during prerendering.
+  await connection();
 
   return createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL,

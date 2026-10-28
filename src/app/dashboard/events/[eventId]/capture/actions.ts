@@ -9,13 +9,15 @@ import { pickGuestCode } from "@/lib/domain/guest-code";
 import { normalizePhone } from "@/lib/domain/phone";
 import { getEvent } from "@/lib/events/queries";
 import { formText } from "@/lib/form-data";
+import { SUSPENDED_MESSAGE } from "@/lib/studio/status";
 import { createClient } from "@/lib/supabase/server";
 
 type GuestRow = Parameters<typeof toCaptureGuest>[0];
 
-/** Any studio member (operators included) can capture, but only at a live event. */
+/** Any studio member (operators included) can capture, but only at a live event of an active studio. */
 async function liveEvent(eventId: string) {
   const { user, studio } = await requireStudio();
+  if (studio.status === "suspended") throw new Error(SUSPENDED_MESSAGE);
   const event = await getEvent(studio.id, eventId);
   if (!event) throw new Error("Event not found.");
   if (event.status !== "live") throw new Error("This event isn't live, so capture is closed.");

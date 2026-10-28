@@ -1,28 +1,8 @@
 // Applies every migration to an in-memory Postgres (PGlite) with minimal
 // stand-ins for Supabase's auth and storage schemas, then checks the rules
 // the app depends on: constraints, studio isolation, roles and bill totals.
-import { PGlite } from "@electric-sql/pglite";
-import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-
-const MIGRATIONS_DIR = join(__dirname, "..", "migrations");
-
-const SUPABASE_STUBS = `
-create role anon nologin;
-create role authenticated nologin;
-create schema auth;
-create table auth.users (id uuid primary key);
-create function auth.uid() returns uuid language sql stable as
-  $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-create schema storage;
-create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
-alter table storage.objects enable row level security;
-grant usage on schema public, auth, storage to anon, authenticated;
-grant execute on function auth.uid() to anon, authenticated;
-`;
+import { openTestDb } from "./db";
 
 // Platform admin, two studio owners, an operator in studio A, a stranger.
 const ADMIN = "11111111-1111-1111-1111-111111111111";
@@ -31,27 +11,15 @@ const OPERATOR_A = "aaaaaaaa-0000-0000-0000-000000000002";
 const OWNER_B = "bbbbbbbb-0000-0000-0000-000000000001";
 const STRANGER = "22222222-2222-2222-2222-222222222222";
 
-let db: PGlite;
+let as: Awaited<ReturnType<typeof openTestDb>>["as"];
+let count: Awaited<ReturnType<typeof openTestDb>>["count"];
+let db: Awaited<ReturnType<typeof openTestDb>>["db"];
 let orgA: string;
 let orgB: string;
 let eventA: string;
 let eventB: string;
 let guestA: string;
 let photoIds: string[];
-
-type Role = "anon" | "authenticated";
-
-async function as<T>(role: Role, uid: string | null, sql: string) {
-  await db.exec(`set role ${role}; select set_config('request.jwt.claim.sub', '${uid ?? ""}', false);`);
-  try {
-    return (await db.query<T>(sql)).rows;
-  } finally {
-    await db.exec("reset role;");
-  }
-}
-
-const count = async (uid: string | null, table: string, role: Role = "authenticated") =>
-  (await as<{ n: number }>(role, uid, `select count(*)::int as n from ${table}`))[0].n;
 
 function eventSql(org: string, slug: string) {
   return `insert into public.events (organization_id, slug, couple_names, starts_at, ends_at, orders_open_at, orders_close_at, gallery_expires_at, print_price_paise)
@@ -60,15 +28,8 @@ function eventSql(org: string, slug: string) {
 }
 
 beforeAll(async () => {
-  db = new PGlite({ extensions: { pgcrypto } });
-  await db.exec(SUPABASE_STUBS);
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort()) {
-    await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-  }
-  // Supabase grants table privileges to these roles; RLS then filters rows.
+  ({ db, as, count } = await openTestDb());
   await db.exec(`
-    grant select, insert, update, delete on all tables in schema public to anon, authenticated;
-    grant select, insert, update, delete on storage.objects to authenticated;
     insert into auth.users values ('${ADMIN}'), ('${OWNER_A}'), ('${OPERATOR_A}'), ('${OWNER_B}'), ('${STRANGER}');
     insert into public.admin_users values ('${ADMIN}');
   `);
@@ -159,8 +120,8 @@ describe("studio isolation", () => {
   });
 
   it("lets platform admins see every studio", async () => {
-    expect(await count(ADMIN, "public.organizations")).toBe(2);
-    expect(await count(ADMIN, "public.events")).toBe(2);
+    expect(await count(ADMIN, "public.organizations", "authenticated", "aal2")).toBe(2);
+    expect(await count(ADMIN, "public.events", "authenticated", "aal2")).toBe(2);
   });
 });
 

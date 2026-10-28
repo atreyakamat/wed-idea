@@ -18,6 +18,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 create schema auth;
 create table auth.users (id uuid primary key, email text);
 create table auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid not null, status text not null default 'verified');
+create table auth.sessions (id uuid primary key, user_id uuid not null, factor_id uuid);
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create function auth.jwt() returns jsonb language sql stable as
@@ -47,7 +48,8 @@ export async function openTestDb() {
 
   /** Runs SQL as a user, like a PostgREST request with that user's JWT. */
   async function as<T>(role: Role, uid: string | null, sql: string, aal: Aal = "aal1") {
-    const claims = uid ? JSON.stringify({ sub: uid, role, aal }) : "";
+    // Each test user has one session, whose id is their user id.
+    const claims = uid ? JSON.stringify({ sub: uid, role, aal, session_id: uid }) : "";
     await db.query(
       `select set_config('request.jwt.claim.sub', $1, false), set_config('request.jwt.claims', $2, false)`,
       [uid ?? "", claims],
@@ -67,6 +69,8 @@ export async function openTestDb() {
   async function makeAdmin(uid: string) {
     const factor = (await db.query<{ id: string }>(`insert into auth.mfa_factors (user_id) values ($1) returning id`, [uid])).rows[0].id;
     await db.query(`insert into public.admin_users (user_id, mfa_factor_id, mfa_setup_until) values ($1, $2, null)`, [uid, factor]);
+    // Their session passed two-step sign-in with that authenticator.
+    await db.query(`insert into auth.sessions (id, user_id, factor_id) values ($1, $1, $2)`, [uid, factor]);
     return factor;
   }
 

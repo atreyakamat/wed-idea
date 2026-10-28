@@ -25,10 +25,36 @@ alter table public.admin_users
   add column mfa_factor_id   uuid,
   add column mfa_setup_until timestamptz default (now() + interval '1 hour');
 
--- An aal2 session alone isn't enough: the admin's registered factor must
--- still exist and be verified. Supabase only lets an aal1 session add a
--- factor when the user has none, so once one is registered, a stolen
--- password can't add its own.
+-- Admins that already exist don't get a surprise setup window at deploy
+-- time; reopen it by hand (see README) when needed.
+update public.admin_users set mfa_setup_until = null;
+
+-- Opening setup (adding an admin, or resetting one) removes any
+-- authenticators already on the account, so one planted earlier with a
+-- stolen password can't be registered.
+create or replace function public.clear_admin_factors_on_setup()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.mfa_factor_id is null and new.mfa_setup_until is not null
+     and (tg_op = 'INSERT' or new.mfa_setup_until is distinct from old.mfa_setup_until) then
+    delete from auth.mfa_factors where user_id = new.user_id;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.clear_admin_factors_on_setup() from public, anon, authenticated;
+
+create trigger admin_users_fresh_setup
+  before insert or update on public.admin_users
+  for each row execute function public.clear_admin_factors_on_setup();
+
+-- Admin needs: an aal2 session, whose second step used this admin's
+-- registered authenticator, which still exists and is verified.
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -41,7 +67,9 @@ as $$
        select 1
        from public.admin_users a
        join auth.mfa_factors f on f.id = a.mfa_factor_id and f.user_id = a.user_id and f.status = 'verified'
+       join auth.sessions s on s.user_id = a.user_id and s.factor_id = a.mfa_factor_id
        where a.user_id = (select auth.uid())
+         and s.id = nullif((select auth.jwt()) ->> 'session_id', '')::uuid
      );
 $$;
 
@@ -114,6 +142,12 @@ declare
   org uuid;
 begin
   if current_user not in ('authenticated', 'anon') or public.is_admin() then
+    return new;
+  end if;
+
+  -- Hiding a photo (for example when a guest asks) is always allowed.
+  if tg_table_name = 'photos' and tg_op = 'UPDATE'
+     and (to_jsonb(new) - 'deleted_at') = (to_jsonb(old) - 'deleted_at') then
     return new;
   end if;
 

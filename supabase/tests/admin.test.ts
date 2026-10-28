@@ -275,6 +275,20 @@ describe("admin access is tied to the registered authenticator", () => {
     expect(await t.count(NEW_ADMIN, "public.organizations", "authenticated", "aal2")).toBe(0);
   });
 
+  it("removes authenticators planted before the admin was added", async () => {
+    expect(
+      (await t.db.query<{ n: number }>("select count(*)::int as n from auth.mfa_factors where user_id = '33333333-3333-3333-3333-333333333333'")).rows[0].n,
+    ).toBe(0);
+  });
+
+  it("ignores an aal2 session that used a different authenticator", async () => {
+    const other = (await t.db.query<{ id: string }>(`insert into auth.mfa_factors (user_id) values ('${ADMIN}') returning id`)).rows[0].id;
+    await t.db.exec(`update auth.sessions set factor_id = '${other}' where id = '${ADMIN}'`);
+    expect(await t.count(ADMIN, "public.organizations", "authenticated", "aal2")).toBe(0);
+    await t.db.exec(`update auth.sessions set factor_id = '${adminFactor}' where id = '${ADMIN}'; delete from auth.mfa_factors where id = '${other}'`);
+    expect(await t.count(ADMIN, "public.organizations", "authenticated", "aal2")).toBe(2);
+  });
+
   it("opens authenticator setup for an hour when an admin is added", async () => {
     const [{ minutes }] = (
       await t.db.query<{ minutes: number }>(
@@ -336,6 +350,11 @@ describe("suspension has no back doors", () => {
       t.as("authenticated", OPERATOR_A, `insert into storage.objects (bucket_id, name) values ('event-photos', '${orgA}/${eventA}/new.jpg')`),
     ).rejects.toThrow();
     expect(await t.count(OPERATOR_A, `storage.objects where name = '${orgA}/${eventA}/existing.jpg'`)).toBe(1);
+  });
+
+  it("still lets a photo be hidden", async () => {
+    const rows = await t.as("authenticated", OPERATOR_A, `update public.photos set deleted_at = now() where id = '${photoId}' returning id`);
+    expect(rows).toHaveLength(1);
   });
 
   it("lets uploads resume after reactivation", async () => {

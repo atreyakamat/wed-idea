@@ -12,8 +12,12 @@ const MIGRATIONS_DIR = join(__dirname, "..", "migrations");
 const SUPABASE_STUBS = `
 create role anon nologin;
 create role authenticated nologin;
+-- Like Supabase: new functions in public are executable by anon and
+-- authenticated unless a migration revokes it.
+alter default privileges in schema public grant execute on functions to anon, authenticated;
 create schema auth;
 create table auth.users (id uuid primary key, email text);
+create table auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid not null, status text not null default 'verified');
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create function auth.jwt() returns jsonb language sql stable as
@@ -59,5 +63,12 @@ export async function openTestDb() {
   const count = async (uid: string | null, table: string, role: Role = "authenticated", aal: Aal = "aal1") =>
     (await as<{ n: number }>(role, uid, `select count(*)::int as n from ${table}`, aal))[0].n;
 
-  return { db, as, count };
+  /** A platform admin with a verified authenticator, as the setup flow leaves them. */
+  async function makeAdmin(uid: string) {
+    const factor = (await db.query<{ id: string }>(`insert into auth.mfa_factors (user_id) values ($1) returning id`, [uid])).rows[0].id;
+    await db.query(`insert into public.admin_users (user_id, mfa_factor_id, mfa_setup_until) values ($1, $2, null)`, [uid, factor]);
+    return factor;
+  }
+
+  return { db, as, count, makeAdmin };
 }

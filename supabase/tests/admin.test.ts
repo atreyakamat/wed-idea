@@ -12,6 +12,7 @@ let t: Awaited<ReturnType<typeof openTestDb>>;
 let orgA: string;
 let orgB: string;
 let eventA: string;
+let adminFactor: string;
 
 const asAdmin = <T>(sql: string) => t.as<T>("authenticated", ADMIN, sql, "aal2");
 
@@ -31,8 +32,8 @@ beforeAll(async () => {
   await t.db.exec(`
     insert into auth.users values
       ('${ADMIN}', 'me@cwp.in'), ('${OWNER_A}', 'asha@saltwater.in'), ('${OPERATOR_A}', 'ravi@saltwater.in'), ('${OWNER_B}', 'neel@other.in');
-    insert into public.admin_users values ('${ADMIN}');
   `);
+  adminFactor = await t.makeAdmin(ADMIN);
   orgA = (await t.as<{ id: string }>("authenticated", OWNER_A, "select public.create_organization('Saltwater Studios', 'saltwater') as id"))[0].id;
   orgB = (await t.as<{ id: string }>("authenticated", OWNER_B, "select public.create_organization('Other Studio', 'other-studio') as id"))[0].id;
   await t.as("authenticated", OWNER_A, `insert into public.organization_members (organization_id, user_id, role) values ('${orgA}', '${OPERATOR_A}', 'operator')`);
@@ -234,5 +235,127 @@ describe("admin reads", () => {
       storage_bytes: 350000,
     });
     expect(o.signups_by_week).toHaveLength(12);
+  });
+});
+
+describe("internal helpers stay internal", () => {
+  it.each([
+    "select * from public.studio_storage_bytes()",
+    "select public.assert_admin()",
+    "select public.write_audit('fake', null, '{}')",
+  ])("refuses %s to visitors and studio owners", async (sql) => {
+    await expect(t.as("anon", null, sql)).rejects.toThrow(/permission denied/i);
+    await expect(t.as("authenticated", OWNER_A, sql, "aal2")).rejects.toThrow(/permission denied/i);
+  });
+
+  it("only tells members whether their own studio is suspended", async () => {
+    await t.db.exec(`update public.organizations set status = 'suspended', suspended_at = now(), suspended_reason = 'x' where id = '${orgB}'`);
+    await expect(t.as("anon", null, `select public.is_studio_suspended('${orgB}')`)).rejects.toThrow(/permission denied/i);
+    const [{ s }] = await t.as<{ s: boolean }>("authenticated", OWNER_A, `select public.is_studio_suspended('${orgB}') as s`);
+    expect(s).toBe(false);
+    await t.db.exec(`update public.organizations set status = 'trialing', suspended_at = null, suspended_reason = null where id = '${orgB}'`);
+  });
+});
+
+describe("admin access is tied to the registered authenticator", () => {
+  it("ignores an aal2 session once the registered authenticator is gone", async () => {
+    await t.db.exec(`update auth.mfa_factors set status = 'unverified' where id = '${adminFactor}'`);
+    expect(await t.count(ADMIN, "public.organizations", "authenticated", "aal2")).toBe(0);
+    await t.db.exec(`update auth.mfa_factors set status = 'verified' where id = '${adminFactor}'`);
+    expect(await t.count(ADMIN, "public.organizations", "authenticated", "aal2")).toBe(2);
+  });
+
+  it("gives an admin row without a registered authenticator nothing", async () => {
+    const NEW_ADMIN = "33333333-3333-3333-3333-333333333333";
+    await t.db.exec(`
+      insert into auth.users values ('${NEW_ADMIN}', 'new@cwp.in');
+      insert into auth.mfa_factors (user_id) values ('${NEW_ADMIN}');
+      insert into public.admin_users (user_id) values ('${NEW_ADMIN}');
+    `);
+    expect(await t.count(NEW_ADMIN, "public.organizations", "authenticated", "aal2")).toBe(0);
+  });
+
+  it("opens authenticator setup for an hour when an admin is added", async () => {
+    const [{ minutes }] = (
+      await t.db.query<{ minutes: number }>(
+        "select round(extract(epoch from mfa_setup_until - now()) / 60)::int as minutes from public.admin_users where user_id = '33333333-3333-3333-3333-333333333333'",
+      )
+    ).rows;
+    expect(minutes).toBe(60);
+  });
+});
+
+describe("suspension has no back doors", () => {
+  let guestId: string;
+  let photoId: string;
+
+  beforeAll(async () => {
+    await asAdmin(`select public.admin_set_studio_status('${orgA}', 'active')`);
+    guestId = (
+      await t.as<{ id: string }>(
+        "authenticated",
+        OPERATOR_A,
+        `insert into public.guests (event_id, code, phone_e164, consent_at) values ('${eventA}', 'C33', '+919800000003', now()) returning id`,
+      )
+    )[0].id;
+    photoId = (
+      await t.as<{ id: string }>(
+        "authenticated",
+        OPERATOR_A,
+        `insert into public.photos (event_id, guest_id, storage_path) values ('${eventA}', '${guestId}', '${orgA}/${eventA}/c.jpg') returning id`,
+      )
+    )[0].id;
+    // Owner A also manages studio B, to prove the move is refused by the
+    // trigger and not just by row-level security.
+    await t.db.exec(`insert into public.organization_members (organization_id, user_id, role) values ('${orgB}', '${OWNER_A}', 'admin')`);
+    await asAdmin(`select public.admin_set_studio_status('${orgA}', 'suspended', 'Testing back doors')`);
+  });
+
+  it("won't move an event into another studio", async () => {
+    await expect(
+      t.as("authenticated", OWNER_A, `update public.events set organization_id = '${orgB}' where id = '${eventA}'`),
+    ).rejects.toThrow(/can't be moved/i);
+  });
+
+  it("won't open a new studio while suspended", async () => {
+    await expect(t.as("authenticated", OWNER_A, "select public.create_organization('Fresh Start', 'fresh-start')")).rejects.toThrow(/suspended/i);
+  });
+
+  it("won't let guests or photos be changed", async () => {
+    await expect(
+      t.as("authenticated", OPERATOR_A, `update public.guests set phone_e164 = '+919800000004', name = 'New guest' where id = '${guestId}'`),
+    ).rejects.toThrow(/suspended/i);
+    await expect(
+      t.as("authenticated", OPERATOR_A, `update public.photos set storage_path = '${orgA}/${eventA}/d.jpg' where id = '${photoId}'`),
+    ).rejects.toThrow(/suspended/i);
+  });
+
+  it("won't take uploads, but files can still be read", async () => {
+    await t.db.exec(`insert into storage.objects (bucket_id, name) values ('event-photos', '${orgA}/${eventA}/existing.jpg')`);
+    await expect(
+      t.as("authenticated", OPERATOR_A, `insert into storage.objects (bucket_id, name) values ('event-photos', '${orgA}/${eventA}/new.jpg')`),
+    ).rejects.toThrow();
+    expect(await t.count(OPERATOR_A, `storage.objects where name = '${orgA}/${eventA}/existing.jpg'`)).toBe(1);
+  });
+
+  it("lets uploads resume after reactivation", async () => {
+    await asAdmin(`select public.admin_set_studio_status('${orgA}', 'active')`);
+    const rows = await t.as("authenticated", OPERATOR_A, `insert into storage.objects (bucket_id, name) values ('event-photos', '${orgA}/${eventA}/new.jpg') returning id`);
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe("studios per account", () => {
+  it("allows one studio per account", async () => {
+    await expect(t.as("authenticated", OWNER_B, "select public.create_organization('Second', 'second-studio')")).rejects.toThrow(/already have a studio/i);
+  });
+});
+
+describe("audit history", () => {
+  it("keeps the studio's name after the studio is deleted", async () => {
+    await t.db.exec(`delete from public.organizations where id = '${orgB}'`);
+    const rows = await asAdmin<{ studio_name: string; action: string }>(`select studio_name, action from public.admin_audit_entries('${orgB}')`);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.studio_name === "Other Studio")).toBe(true);
   });
 });

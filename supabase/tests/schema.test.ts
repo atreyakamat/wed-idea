@@ -14,6 +14,7 @@ const STRANGER = "22222222-2222-2222-2222-222222222222";
 let as: Awaited<ReturnType<typeof openTestDb>>["as"];
 let count: Awaited<ReturnType<typeof openTestDb>>["count"];
 let db: Awaited<ReturnType<typeof openTestDb>>["db"];
+let makeAdmin: Awaited<ReturnType<typeof openTestDb>>["makeAdmin"];
 let orgA: string;
 let orgB: string;
 let eventA: string;
@@ -28,11 +29,11 @@ function eventSql(org: string, slug: string) {
 }
 
 beforeAll(async () => {
-  ({ db, as, count } = await openTestDb());
+  ({ db, as, count, makeAdmin } = await openTestDb());
   await db.exec(`
     insert into auth.users values ('${ADMIN}'), ('${OWNER_A}'), ('${OPERATOR_A}'), ('${OWNER_B}'), ('${STRANGER}');
-    insert into public.admin_users values ('${ADMIN}');
   `);
+  await makeAdmin(ADMIN);
 
   // Owners create their studios through the RPC, as the app does.
   orgA = (await as<{ id: string }>("authenticated", OWNER_A, "select public.create_organization('Saltwater Studios', 'saltwater') as id"))[0].id;

@@ -83,11 +83,13 @@ supabase/
 - **Events:** every studio's weddings, read-only, for support.
 - **Audit log:** every admin change with who, when and why. Nobody can edit or delete entries.
 
-**Studio status.** New studios start on a 14-day trial. A suspended studio can't create events, go live or capture, but its guests can still open their galleries. Trials ending doesn't block anything yet; plans and limits come next.
+**Studio status.** New studios start on a 14-day trial, one studio per account. A suspended studio can't create events, go live, capture, upload, move events to another studio or open a new studio, but its guests can still open their galleries. Trials ending doesn't block anything yet; plans and limits come next.
 
 **Security.**
-- Admin powers need two-step sign-in. The database's `is_admin()` is true only for an `admin_users` row **and** a session that passed an authenticator-app code (`aal2`). A stolen password alone gets nothing.
+- Admin powers need two-step sign-in. The database's `is_admin()` is true only for an `admin_users` row, a session that passed an authenticator-app code (`aal2`), **and** that admin's registered authenticator. A stolen password alone gets nothing.
+- Authenticator setup is only open for **one hour** after an admin is added or reset. Set it up straight away.
 - Status and trial fields can only change through the audited admin functions, never by a direct update, even by an admin.
+- Audit entries keep the studio's name and the admin's email, so deleting either never rewrites history.
 - Non-admins who open `/admin` get a 404.
 
 **Make yourself an admin.** Sign up normally, then run this in the Supabase SQL editor:
@@ -97,12 +99,16 @@ insert into public.admin_users (user_id)
 select id from auth.users where email = 'you@example.com';
 ```
 
-Open `/admin`, scan the QR code with an authenticator app (Google Authenticator, 1Password, Authy) and enter the code.
+Within the hour, open `/admin`, scan the QR code with an authenticator app (Google Authenticator, 1Password, Authy) and enter the code.
 
-**Lost your phone?** Remove the old authenticator in SQL, then set up a new one at the next sign-in:
+**Missed the hour, or lost your phone?** Remove the old authenticator and reopen setup for an hour:
 
 ```sql
 delete from auth.mfa_factors
+where user_id = (select id from auth.users where email = 'you@example.com');
+
+update public.admin_users
+set mfa_factor_id = null, mfa_setup_until = now() + interval '1 hour'
 where user_id = (select id from auth.users where email = 'you@example.com');
 ```
 

@@ -4,7 +4,8 @@ import { publicEnv } from "@/lib/env";
 
 /**
  * Refreshes the Supabase session cookie for this request and reports whether
- * a user is signed in. Called from src/proxy.ts.
+ * a user is signed in, and whether the session passed two-step sign-in
+ * (aal2). Called from src/proxy.ts.
  */
 export async function updateSession(request: NextRequest) {
   const env = publicEnv();
@@ -39,6 +40,7 @@ export async function updateSession(request: NextRequest) {
   // trusts the cookie without checking it.
   const { data } = await supabase.auth.getClaims();
   const isSignedIn = Boolean(data?.claims?.sub);
+  const hasMfa = data?.claims?.aal === "aal2";
 
-  return { response, isSignedIn };
+  return { response, isSignedIn, hasMfa };
 }

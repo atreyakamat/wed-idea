@@ -79,9 +79,38 @@ supabase/
 
 - **Overview:** studios by status, trials ending this week, live events, guests, photos, storage and sign-ups per week.
 - **Studios:** search by name, link or owner email; open a studio to see its team, events, usage and history.
-- **Actions:** suspend (a reason is required and shown to the studio), reactivate, mark as payment due, or extend a trial by 7, 14 or 30 days.
+- **Actions:** suspend (a reason is required and shown to the studio), reactivate, mark as payment due, extend a trial by 7, 14 or 30 days, record a payment or change plan.
+- **Plans:** edit prices and limits (see [Plans and billing](#plans-and-billing)).
 - **Events:** every studio's weddings, read-only, for support.
 - **Audit log:** every admin change with who, when and why. Nobody can edit or delete entries.
+
+**Studio status.** New studios start on a 14-day trial, one studio per account. A suspended studio can't create events, go live, capture, upload, move events to another studio or open a new studio, but its guests can still open their galleries.
+
+**Security.**
+- Admin powers need two-step sign-in. The database's `is_admin()` is true only for an `admin_users` row **and** a session whose second step (`aal2`) used that admin's registered authenticator. A stolen password alone gets nothing.
+- Authenticator setup is only open for **one hour** after an admin is added or reset. Set it up straight away.
+- Status and trial fields can only change through the audited admin functions, never by a direct update, even by an admin.
+- Audit entries keep the studio's name and the admin's email, so deleting either never rewrites history.
+- Non-admins who open `/admin` get a 404.
+
+**Make yourself an admin.** Sign up normally, then run this in the Supabase SQL editor:
+
+```sql
+insert into public.admin_users (user_id)
+select id from auth.users where email = 'you@example.com';
+```
+
+Within the hour, open `/admin`, scan the QR code with an authenticator app (Google Authenticator, 1Password, Authy) and enter the code.
+
+Adding an admin removes any authenticator already on that account, so one planted earlier with a stolen password can't be used.
+
+**Missed the hour, or lost your phone?** Reopen setup for an hour. This also removes the old authenticator:
+
+```sql
+update public.admin_users
+set mfa_factor_id = null, mfa_setup_until = now() + interval '1 hour'
+where user_id = (select id from auth.users where email = 'you@example.com');
+```
 
 ## Plans and billing
 
@@ -109,34 +138,6 @@ Plans are data: edit prices and limits at `/admin/plans`. Every edit is in the a
 3. Click **Record payment**: pick the plan and months; the amount fills in. The studio moves to that plan, is marked paid from today (or from the end of its current period), and the request closes.
 
 **Change plan** on a studio's page moves it without a payment (complimentary, or a downgrade). Payment records are kept even if a studio is deleted. Razorpay can add the same payment rows later; the `(method, reference)` pair is unique, so a webhook can't record one payment twice.
-
-**Studio status.** New studios start on a 14-day trial, one studio per account. A suspended studio can't create events, go live, capture, upload, move events to another studio or open a new studio, but its guests can still open their galleries. Trials ending doesn't block anything yet; plans and limits come next.
-
-**Security.**
-- Admin powers need two-step sign-in. The database's `is_admin()` is true only for an `admin_users` row **and** a session whose second step (`aal2`) used that admin's registered authenticator. A stolen password alone gets nothing.
-- Authenticator setup is only open for **one hour** after an admin is added or reset. Set it up straight away.
-- Status and trial fields can only change through the audited admin functions, never by a direct update, even by an admin.
-- Audit entries keep the studio's name and the admin's email, so deleting either never rewrites history.
-- Non-admins who open `/admin` get a 404.
-
-**Make yourself an admin.** Sign up normally, then run this in the Supabase SQL editor:
-
-```sql
-insert into public.admin_users (user_id)
-select id from auth.users where email = 'you@example.com';
-```
-
-Within the hour, open `/admin`, scan the QR code with an authenticator app (Google Authenticator, 1Password, Authy) and enter the code.
-
-Adding an admin removes any authenticator already on that account, so one planted earlier with a stolen password can't be used.
-
-**Missed the hour, or lost your phone?** Reopen setup for an hour. This also removes the old authenticator:
-
-```sql
-update public.admin_users
-set mfa_factor_id = null, mfa_setup_until = now() + interval '1 hour'
-where user_id = (select id from auth.users where email = 'you@example.com');
-```
 
 ## Local development
 

@@ -24,8 +24,9 @@ async function liveEvent(eventId: string) {
   const event = await getEvent(studio.id, eventId);
   if (!event) throw new Error("Event not found.");
   if (event.status !== "live") throw new Error("This event isn't live, so capture is closed.");
-  const access = accessFor(studio);
-  if (!canCapture(access, event.ends_at)) throw new Error(blockedMessage(access) ?? "Capture is closed.");
+  if (!canCapture(studio, { status: event.status, endsAt: event.ends_at })) {
+    throw new Error(blockedMessage(accessFor(studio)) ?? "Capture is closed.");
+  }
   return { user, studio, event };
 }
 

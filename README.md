@@ -125,17 +125,17 @@ Plans are data: edit prices and limits at `/admin/plans`. Every edit is in the a
 | Gallery days | 7 | 7 | 30 |
 | Credit on guest galleries | Yes | Yes | No |
 
-**Limits are enforced in the database.** Events count toward the month they take place in, in India time. Lowering a limit never removes anything; it only stops new events, photos or seats beyond it. Studios see plain messages like "You've used 4 of 4 events for December 2026 on the Starter plan. Upgrade to Pro for 15."
+**Limits are enforced in the database.** Events count toward the month they take place in, in India time. Events that have been live can be archived but not deleted, so a month's count can't be reset. Lowering a limit never removes anything; it only stops new events, photos or seats beyond it. Studios see plain messages like "You've used 4 of 4 events for December 2026 on the Starter plan. Upgrade to Pro for 15."
 
 **When access runs out:**
-- Trial ended, or payment more than 7 days late: no new events and no going live. An event that's already live keeps capturing until 12 hours after it ends.
+- Trial ended, or payment more than 7 days late: no new events and no going live. An event that's already live keeps capturing until 12 hours after it ends, and never more than 3 days after access ran out.
 - 1 to 7 days late: everything still works, with a "Payment due" banner.
 - Suspended (by an admin): nothing new at all.
 
 **Getting paid (manual for now):**
 1. A studio owner chooses a plan on `/dashboard/billing`. It shows up under **Upgrade requests** on the admin overview.
 2. They pay you by UPI or bank transfer.
-3. Click **Record payment**: pick the plan and months; the amount fills in. The studio moves to that plan, is marked paid from today (or from the end of its current period), and the request closes.
+3. Click **Record payment**: pick the plan and months; the amount fills in. The studio moves to that plan and the request closes. Paying early for the same plan extends from the end of the current period; a different plan starts today (settle unused time by hand).
 
 **Change plan** on a studio's page moves it without a payment (complimentary, or a downgrade). Payment records are kept even if a studio is deleted. Razorpay can add the same payment rows later; the `(method, reference)` pair is unique, so a webhook can't record one payment twice.
 

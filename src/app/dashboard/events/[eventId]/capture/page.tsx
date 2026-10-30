@@ -40,7 +40,7 @@ async function Capture({ params }: Readonly<{ params: PageProps<"/dashboard/even
   );
 
   const access = accessFor(studio);
-  if (event.status === "live" && !canCapture(access, event.ends_at)) {
+  if (event.status === "live" && !canCapture(studio, { status: event.status, endsAt: event.ends_at })) {
     return (
       <>
         {header}

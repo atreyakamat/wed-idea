@@ -19,8 +19,10 @@ export type StudioAccess = "ok" | "payment_due" | "trial_ended" | "payment_overd
 
 export const PAYMENT_GRACE_DAYS = 7;
 const DAY_MS = 86_400_000;
-/** A live event keeps capturing this long after it ends, whatever the plan state. */
+/** After access runs out, a live event keeps capturing this long after it ends… */
 export const CAPTURE_GRACE_MS = 12 * 60 * 60 * 1000;
+/** …but never longer than this after access ran out. */
+export const CAPTURE_CAP_MS = 3 * DAY_MS;
 
 export const SUSPENDED_MESSAGE = "This studio is suspended. Contact support to reactivate it.";
 export const TRIAL_ENDED_MESSAGE = "Your trial has ended. Choose a plan to start new events.";
@@ -44,11 +46,28 @@ export function canStartWork(access: StudioAccess): boolean {
   return access === "ok" || access === "payment_due";
 }
 
-/** Can the studio capture at this event right now? */
-export function canCapture(access: StudioAccess, eventEndsAt: string, now: Date = new Date()): boolean {
+/** When a blocked studio's access ran out (mirrors access_ended_at), or null. */
+export function accessEndedAt(fields: AccountFields, now: Date = new Date()): number | null {
+  const access = accessFor(fields, now);
+  if (access === "trial_ended") return new Date(fields.trialEndsAt).getTime();
+  if (access === "payment_overdue") {
+    return fields.paidUntil ? new Date(fields.paidUntil).getTime() + PAYMENT_GRACE_DAYS * DAY_MS : new Date(fields.trialEndsAt).getTime();
+  }
+  return null;
+}
+
+/**
+ * Can photos be taken at this event right now? Mirrors capture_open() in the
+ * database: always while access is fine; after it runs out, only at a live
+ * event, until 12 hours after it ends and at most 3 days after access ran out.
+ */
+export function canCapture(fields: AccountFields, event: { status: string; endsAt: string }, now: Date = new Date()): boolean {
+  const access = accessFor(fields, now);
   if (access === "suspended") return false;
   if (canStartWork(access)) return true;
-  return now.getTime() <= new Date(eventEndsAt).getTime() + CAPTURE_GRACE_MS;
+  const ended = accessEndedAt(fields, now) ?? now.getTime();
+  const until = Math.min(new Date(event.endsAt).getTime() + CAPTURE_GRACE_MS, ended + CAPTURE_CAP_MS);
+  return event.status === "live" && now.getTime() <= until;
 }
 
 /** Why new work is blocked, in the same words the database uses. */

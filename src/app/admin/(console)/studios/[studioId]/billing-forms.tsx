@@ -146,7 +146,8 @@ export function PaymentForm({ studioId, plans, initialPlan }: Readonly<{ studioI
         {state.fieldErrors?.reference ? <span className="text-xs font-normal text-danger">{state.fieldErrors.reference}</span> : null}
       </label>
       <p className="text-xs text-muted">
-        Moves the studio onto this plan and marks it paid from today, or from the end of its current period if that&apos;s later.
+        Moves the studio onto this plan. Paying early for the same plan extends it from the end of the current period; a different plan
+        starts today (settle any unused time by hand).
       </p>
       <FormMessage state={state} />
       <SubmitButton disabled={pending}>{pending ? "Recording…" : "Record payment"}</SubmitButton>

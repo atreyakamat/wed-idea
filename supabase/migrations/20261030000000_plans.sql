@@ -9,8 +9,11 @@
 -- * Access: a studio whose trial has ended, or whose payment is more than
 --   7 days late, can't create events or go live. An event that is already
 --   live keeps capturing until 12 hours after it ends, so a wedding is never
---   cut off halfway. Suspension (previous migration) still stops everything.
---   Errors carry hint 'studio_access'.
+--   cut off halfway, but never more than 3 days after access ran out (so
+--   editing an end date can't keep capture open). Suspension (previous
+--   migration) still stops everything. Errors carry hint 'studio_access'.
+-- * Events that have been live are archived, not deleted, so a month's
+--   event count can't be reset by deleting finished weddings.
 -- * Payments are recorded by admins for now (UPI, bank, cash). Razorpay can
 --   insert the same rows later; (method, reference) is unique so a webhook
 --   can't record one payment twice.
@@ -134,6 +137,55 @@ $$;
 revoke all on function public.studio_access(uuid) from public, anon;
 grant execute on function public.studio_access(uuid) to authenticated;
 
+-- When a blocked studio's access ran out: the trial's end, or the end of
+-- the payment grace period. Null while access is fine.
+create or replace function public.access_ended_at(
+  p_status public.studio_status,
+  p_trial_ends_at timestamptz,
+  p_paid_until timestamptz
+)
+returns timestamptz
+language sql
+stable
+set search_path = ''
+as $$
+  select case public.access_for(p_status, p_trial_ends_at, p_paid_until)
+    when 'trial_ended' then p_trial_ends_at
+    when 'payment_overdue' then coalesce(p_paid_until + public.payment_grace(), p_trial_ends_at)
+  end;
+$$;
+
+-- Can photos be taken at this event right now? Always while access is fine.
+-- After access runs out, only at an event that is live, until 12 hours after
+-- it ends and at most 3 days after access ran out. Never when suspended.
+-- Members only (false for anyone else).
+create or replace function public.capture_open(p_event uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((
+    select case public.access_for(o.status, o.trial_ends_at, o.paid_until)
+      when 'ok' then true
+      when 'payment_due' then true
+      when 'suspended' then false
+      else e.status = 'live'
+        and now() <= least(
+          e.ends_at + interval '12 hours',
+          public.access_ended_at(o.status, o.trial_ends_at, o.paid_until) + interval '3 days'
+        )
+    end
+    from public.events e
+    join public.organizations o on o.id = e.organization_id
+    where e.id = p_event and public.is_org_member(e.organization_id)
+  ), false);
+$$;
+
+revoke all on function public.capture_open(uuid) from public, anon;
+grant execute on function public.capture_open(uuid) to authenticated;
+
 -- Replaces the suspension-only rule from the previous migration.
 create or replace function public.block_suspended_studio()
 returns trigger
@@ -141,8 +193,6 @@ language plpgsql
 set search_path = ''
 as $$
 declare
-  org uuid;
-  ends timestamptz;
   access text;
 begin
   if current_user not in ('authenticated', 'anon') or public.is_admin() then
@@ -150,7 +200,10 @@ begin
   end if;
 
   -- Hiding a photo (for example when a guest asks) is always allowed.
+  -- Un-hiding is not: it goes through the same checks as adding one.
+  -- (Read through jsonb: this trigger also runs on tables without deleted_at.)
   if tg_table_name = 'photos' and tg_op = 'UPDATE'
+     and to_jsonb(old) ->> 'deleted_at' is null and to_jsonb(new) ->> 'deleted_at' is not null
      and (to_jsonb(new) - 'deleted_at') = (to_jsonb(old) - 'deleted_at') then
     return new;
   end if;
@@ -160,55 +213,103 @@ begin
     if tg_op = 'UPDATE' and not (new.status = 'live' and old.status is distinct from 'live') then
       return new;
     end if;
-    org := new.organization_id;
-  else
-    select e.organization_id, e.ends_at into org, ends from public.events e where e.id = new.event_id;
+    access := public.studio_access(new.organization_id);
+    if access = 'suspended' then
+      raise exception 'This studio is suspended. Contact support to reactivate it.'
+        using errcode = '42501', hint = 'studio_access';
+    elsif access = 'trial_ended' then
+      raise exception 'Your trial has ended. Choose a plan to start new events.'
+        using errcode = '42501', hint = 'studio_access';
+    elsif access = 'payment_overdue' then
+      raise exception 'Your payment is overdue. Settle it to start new events.'
+        using errcode = '42501', hint = 'studio_access';
+    end if;
+    return new;
   end if;
 
-  access := public.studio_access(org);
-
+  -- Guests and photos.
+  if public.capture_open(new.event_id) then
+    return new;
+  end if;
+  access := (select public.studio_access(e.organization_id) from public.events e where e.id = new.event_id);
   if access = 'suspended' then
     raise exception 'This studio is suspended. Contact support to reactivate it.'
       using errcode = '42501', hint = 'studio_access';
-  end if;
-
-  if access in ('trial_ended', 'payment_overdue') then
-    -- Guests and photos: an event that's already running may finish.
-    if tg_table_name <> 'events' and (tg_op = 'UPDATE' or now() <= ends + interval '12 hours') then
-      return new;
-    end if;
-    if access = 'trial_ended' then
-      raise exception 'Your trial has ended. Choose a plan to start new events.'
-        using errcode = '42501', hint = 'studio_access';
-    end if;
-    raise exception 'Your payment is overdue. Settle it to start new events.'
+  elsif access = 'trial_ended' then
+    raise exception 'Your trial has ended. Choose a plan to start new events.'
       using errcode = '42501', hint = 'studio_access';
   end if;
+  raise exception 'Your payment is overdue. Settle it to start new events.'
+    using errcode = '42501', hint = 'studio_access';
+end;
+$$;
 
+-- Photos never move between events, and events that have been live are
+-- archived rather than deleted, so neither can be used to get round limits.
+create or replace function public.keep_photo_event()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('authenticated', 'anon') and not public.is_admin()
+     and new.event_id is distinct from old.event_id then
+    raise exception 'Photos can''t be moved to another event' using errcode = '42501';
+  end if;
   return new;
 end;
 $$;
 
--- Storage uploads follow the same rule as photo rows.
-create or replace function public.studio_can_upload(org uuid)
+create trigger photos_keep_event
+  before update of event_id on public.photos
+  for each row execute function public.keep_photo_event();
+
+create or replace function public.keep_live_events()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('authenticated', 'anon') and not public.is_admin() and old.status <> 'draft' then
+    raise exception 'Events that have been live can''t be deleted. Archive it instead.' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+
+create trigger events_keep_live
+  before delete on public.events
+  for each row execute function public.keep_live_events();
+
+-- Storage: a file may go into an event's folder only while capture is open
+-- there. Paths are "<studio>/<event>/<guest>/<file>".
+create or replace function public.can_upload_photo(p_path text)
 returns boolean
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select coalesce(public.studio_access(org), 'suspended') <> 'suspended';
+  select case
+    when split_part(p_path, '/', 2) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      exists (
+        select 1 from public.events e
+        where e.id = split_part(p_path, '/', 2)::uuid
+          and e.organization_id = public.storage_path_org(p_path)
+      ) and public.capture_open(split_part(p_path, '/', 2)::uuid)
+    else false
+  end;
 $$;
 
-revoke all on function public.studio_can_upload(uuid) from public, anon;
-grant execute on function public.studio_can_upload(uuid) to authenticated;
+revoke all on function public.can_upload_photo(text) from public, anon;
+grant execute on function public.can_upload_photo(text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Limits
 -- ---------------------------------------------------------------------------
 
 -- The next plan up that allows more of something, for the error message.
-create or replace function public.upgrade_hint(p_column text, p_current integer)
+create or replace function public.upgrade_hint(p_column text, p_current integer, p_unit text)
 returns text
 language plpgsql
 stable
@@ -225,11 +326,11 @@ begin
   if next_plan is null then
     return '';
   end if;
-  return format(' Upgrade to %s for %s.', next_plan.name, to_char(next_plan.amount, 'FM999,999,999'));
+  return format(' Upgrade to %s for %s %s.', next_plan.name, to_char(next_plan.amount, 'FM999,999,999'), p_unit);
 end;
 $$;
 
-revoke all on function public.upgrade_hint(text, integer) from public, anon, authenticated;
+revoke all on function public.upgrade_hint(text, integer, text) from public, anon, authenticated;
 
 create or replace function public.raise_plan_limit(p_message text)
 returns void
@@ -262,9 +363,11 @@ begin
   where o.id = new.organization_id
   for update of o;  -- one limit check per studio at a time
 
-  -- Events per month, by the event's own date in India time.
-  if tg_op = 'INSERT' or new.starts_at is distinct from old.starts_at then
-    month_start := date_trunc('month', new.starts_at at time zone 'Asia/Kolkata');
+  -- Events per month, by the event's own date in India time. Checked when an
+  -- event is added or moves to another month, so a studio over a lowered
+  -- limit can still edit the events it has.
+  month_start := date_trunc('month', new.starts_at at time zone 'Asia/Kolkata');
+  if tg_op = 'INSERT' or month_start is distinct from date_trunc('month', old.starts_at at time zone 'Asia/Kolkata') then
     select count(*) into used
     from public.events e
     where e.organization_id = new.organization_id
@@ -274,16 +377,17 @@ begin
       perform public.raise_plan_limit(format(
         'You''ve used %s of %s events for %s on the %s plan.%s',
         used, plan.events_per_month, to_char(month_start, 'FMMonth YYYY'), plan.name,
-        public.upgrade_hint('events_per_month', plan.events_per_month)
+        public.upgrade_hint('events_per_month', plan.events_per_month, 'events a month')
       ));
     end if;
   end if;
 
-  -- Gallery length.
-  if new.gallery_expires_at > new.ends_at + make_interval(days => plan.gallery_days) + interval '1 hour' then
+  -- Gallery length, when it's set or made longer.
+  if (tg_op = 'INSERT' or (new.gallery_expires_at - new.ends_at) > (old.gallery_expires_at - old.ends_at))
+     and new.gallery_expires_at > new.ends_at + make_interval(days => plan.gallery_days) + interval '1 hour' then
     perform public.raise_plan_limit(format(
       'The %s plan keeps galleries for up to %s days.%s',
-      plan.name, plan.gallery_days, public.upgrade_hint('gallery_days', plan.gallery_days)
+      plan.name, plan.gallery_days, public.upgrade_hint('gallery_days', plan.gallery_days, 'days')
     ));
   end if;
 
@@ -308,6 +412,10 @@ begin
   if (select auth.role()) is distinct from 'authenticated' or public.is_admin() then
     return new;
   end if;
+  -- Only a photo becoming visible counts: added, or un-hidden.
+  if tg_op = 'UPDATE' and not (old.deleted_at is not null and new.deleted_at is null) then
+    return new;
+  end if;
 
   select p.* into plan
   from public.events e
@@ -317,12 +425,12 @@ begin
 
   -- One count per event at a time, so parallel uploads can't overshoot.
   perform pg_advisory_xact_lock(hashtext('photos:' || new.event_id::text));
-  select count(*) into used from public.photos where event_id = new.event_id and deleted_at is null;
+  select count(*) into used from public.photos where event_id = new.event_id and deleted_at is null and id <> new.id;
   if used >= plan.photos_per_event then
     perform public.raise_plan_limit(format(
       'This event has reached %s photos, the most the %s plan allows.%s',
       to_char(plan.photos_per_event, 'FM999,999,999'), plan.name,
-      public.upgrade_hint('photos_per_event', plan.photos_per_event)
+      public.upgrade_hint('photos_per_event', plan.photos_per_event, 'photos per event')
     ));
   end if;
   return new;
@@ -330,7 +438,7 @@ end;
 $$;
 
 create trigger photos_enforce_limit
-  before insert on public.photos
+  before insert or update of deleted_at on public.photos
   for each row execute function public.enforce_photo_limit();
 
 create or replace function public.enforce_seat_limit()
@@ -355,7 +463,7 @@ begin
   if used >= plan.team_seats then
     perform public.raise_plan_limit(format(
       'The %s plan has %s team seats, and they''re all taken.%s',
-      plan.name, plan.team_seats, public.upgrade_hint('team_seats', plan.team_seats)
+      plan.name, plan.team_seats, public.upgrade_hint('team_seats', plan.team_seats, 'seats')
     ));
   end if;
   return new;
@@ -610,7 +718,12 @@ begin
     raise exception 'Studio not found' using errcode = 'P0002';
   end if;
 
-  starts := greatest(coalesce(org.paid_until, now()), now());
+  -- Paying early for the same plan extends it; a new plan starts today (any
+  -- difference for unused time is settled by hand).
+  starts := case
+    when org.plan_id = p_plan then greatest(coalesce(org.paid_until, now()), now())
+    else now()
+  end;
   ends := starts + make_interval(months => p_months);
 
   insert into public.payments (organization_id, plan_id, amount_paise, method, reference, months, period_start, period_end, recorded_by)
@@ -931,7 +1044,7 @@ grant execute on function public.admin_payments(uuid, integer) to authenticated;
 grant execute on function public.admin_plan_requests() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Storage: uploads follow access, not just suspension
+-- Storage: uploads follow the same capture rule as photo rows
 -- ---------------------------------------------------------------------------
 
 drop policy "active members upload photos" on storage.objects;
@@ -943,7 +1056,7 @@ create policy "active members upload photos"
   with check (
     bucket_id = 'event-photos'
     and (select public.is_org_member(public.storage_path_org(name)))
-    and (select public.studio_can_upload(public.storage_path_org(name)))
+    and (select public.can_upload_photo(name))
   );
 
 create policy "active members replace photos"
@@ -953,5 +1066,5 @@ create policy "active members replace photos"
   with check (
     bucket_id = 'event-photos'
     and (select public.is_org_member(public.storage_path_org(name)))
-    and (select public.studio_can_upload(public.storage_path_org(name)))
+    and (select public.can_upload_photo(name))
   );

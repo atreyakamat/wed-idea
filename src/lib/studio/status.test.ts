@@ -39,12 +39,26 @@ describe("what each state allows", () => {
   });
 
   it("lets a live wedding finish, up to 12 hours after it ends", () => {
-    expect(canCapture("trial_ended", inHours(2), now)).toBe(true);
-    expect(canCapture("trial_ended", inHours(-11), now)).toBe(true);
-    expect(canCapture("trial_ended", inHours(-13), now)).toBe(false);
-    expect(canCapture("payment_overdue", inHours(-13), now)).toBe(false);
-    expect(canCapture("suspended", inHours(2), now)).toBe(false);
-    expect(canCapture("ok", inDays(-30), now)).toBe(true);
+    const ended = { status: "trialing", trialEndsAt: inHours(-1), paidUntil: null } as const;
+    const live = (endsAt: string) => ({ status: "live", endsAt });
+    expect(canCapture(ended, live(inHours(2)), now)).toBe(true);
+    expect(canCapture(ended, live(inHours(-11)), now)).toBe(true);
+    expect(canCapture(ended, live(inHours(-13)), now)).toBe(false);
+    expect(canCapture({ status: "active", trialEndsAt: inDays(-30), paidUntil: inDays(-8) }, live(inHours(-13)), now)).toBe(false);
+    expect(canCapture({ status: "suspended", trialEndsAt: inDays(3), paidUntil: null }, live(inHours(2)), now)).toBe(false);
+    expect(canCapture({ status: "active", trialEndsAt: inDays(-30), paidUntil: null }, { status: "draft", endsAt: inDays(-30) }, now)).toBe(true);
+  });
+
+  it("never keeps capture open more than 3 days after access ran out", () => {
+    const longAgo = { status: "trialing", trialEndsAt: inDays(-4), paidUntil: null } as const;
+    expect(canCapture(longAgo, { status: "live", endsAt: inDays(300) }, now)).toBe(false);
+    const recently = { status: "trialing", trialEndsAt: inDays(-2), paidUntil: null } as const;
+    expect(canCapture(recently, { status: "live", endsAt: inDays(300) }, now)).toBe(true);
+  });
+
+  it("only lets live events keep capturing once access has run out", () => {
+    const ended = { status: "trialing", trialEndsAt: inHours(-1), paidUntil: null } as const;
+    expect(canCapture(ended, { status: "draft", endsAt: inHours(5) }, now)).toBe(false);
   });
 
   it("explains blocked states in the database's words", () => {

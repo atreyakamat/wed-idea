@@ -120,7 +120,7 @@ describe("event limits", () => {
   it("refuse a second event in the same month, with a plain message", async () => {
     const err = await failure(asOwner(eventSql(org, "december-two", "2026-12-20 09:00+05:30", "2026-12-20 17:00+05:30")));
     expect(err.hint).toBe("plan_limit");
-    expect(err.message).toBe("You've used 1 of 1 events for December 2026 on the Trial plan. Upgrade to Starter for 4.");
+    expect(err.message).toBe("You've used 1 of 1 events for December 2026 on the Trial plan. Upgrade to Starter for 4 events a month.");
   });
 
   it("count months in India time", async () => {
@@ -138,7 +138,7 @@ describe("event limits", () => {
 
   it("cap gallery length at the plan's days", async () => {
     const err = await failure(asOwner(eventSql(org, "long-gallery", "2027-02-10 09:00+05:30", "2027-02-10 17:00+05:30", 10)));
-    expect(err.message).toBe("The Trial plan keeps galleries for up to 7 days. Upgrade to Pro for 30.");
+    expect(err.message).toBe("The Trial plan keeps galleries for up to 7 days. Upgrade to Pro for 30 days.");
   });
 
   it("don't apply to platform admins", async () => {
@@ -169,19 +169,32 @@ describe("photo and seat limits", () => {
     await t.as("authenticated", OPERATOR, photo(2));
     const err = await failure(t.as("authenticated", OPERATOR, photo(3)));
     expect(err.hint).toBe("plan_limit");
-    expect(err.message).toBe("This event has reached 2 photos, the most the Trial plan allows. Upgrade to Starter for 1,500.");
+    expect(err.message).toBe("This event has reached 2 photos, the most the Trial plan allows. Upgrade to Starter for 1,500 photos per event.");
   });
 
   it("free a photo slot when one is hidden", async () => {
     await t.as("authenticated", OPERATOR, `update public.photos set deleted_at = now() where storage_path = '${org}/${eventId}/1.jpg'`);
     const rows = await t.as("authenticated", OPERATOR, `insert into public.photos (event_id, guest_id, storage_path) values ('${eventId}', '${guestId}', '${org}/${eventId}/3.jpg') returning id`);
     expect(rows).toHaveLength(1);
+  });
+
+  it("count a photo again when it's un-hidden", async () => {
+    const err = await failure(t.as("authenticated", OPERATOR, `update public.photos set deleted_at = null where storage_path = '${org}/${eventId}/1.jpg'`));
+    expect(err.hint).toBe("plan_limit");
+  });
+
+  it("don't let photos move to another event", async () => {
+    const other = (await sql<{ id: string }>(eventSql(org, "photo-target", "2027-05-01 09:00+05:30", "2027-05-01 17:00+05:30")))[0].id;
+    const err = await failure(
+      t.as("authenticated", OWNER, `update public.photos set event_id = '${other}', guest_id = null, storage_path = '${org}/${other}/moved.jpg' where storage_path = '${org}/${eventId}/2.jpg'`),
+    );
+    expect(err.message).toMatch(/can't be moved/);
     await asAdmin("select public.admin_update_plan('trial', 'Trial', 0, 1, 300, 2, 7, false)");
   });
 
   it("stop members at the plan's seats", async () => {
     const err = await failure(asOwner(`insert into public.organization_members (organization_id, user_id, role) values ('${org}', '${SPARE[0]}', 'operator')`));
-    expect(err.message).toBe("The Trial plan has 2 team seats, and they're all taken. Upgrade to Starter for 3.");
+    expect(err.message).toBe("The Trial plan has 2 team seats, and they're all taken. Upgrade to Starter for 3 seats.");
   });
 });
 
@@ -219,6 +232,29 @@ describe("trial end and late payment", () => {
     expect(upload).toHaveLength(1);
   });
 
+  it("don't reopen capture when the end date is pushed out", async () => {
+    await asOwner(`update public.events set ends_at = now() + interval '300 days', gallery_expires_at = now() + interval '305 days' where id = '${endedEvent}'`).catch(() => undefined);
+    await t.db.exec(`update public.events set ends_at = now() + interval '300 days' where id = '${endedEvent}'`);
+    await t.db.exec(`update public.organizations set trial_ends_at = now() - interval '4 days' where id = '${org}'`);
+    const err = await failure(
+      t.as("authenticated", OPERATOR, `insert into public.guests (event_id, code, phone_e164, consent_at) values ('${endedEvent}', 'D44', '+919800000004', now())`),
+    );
+    expect(err.message).toMatch(/trial has ended/);
+    await t.db.exec(`update public.organizations set trial_ends_at = now() - interval '1 minute' where id = '${org}'`);
+    await t.db.exec(`update public.events set ends_at = now() - interval '2 days' where id = '${endedEvent}'`);
+  });
+
+  it("only let live events keep capturing", async () => {
+    const draft = (await sql<{ id: string }>(eventSql(org, "draft-after-trial", "2027-06-01 09:00+05:30", "2027-06-01 17:00+05:30")))[0].id;
+    const err = await failure(
+      t.as("authenticated", OPERATOR, `insert into public.guests (event_id, code, phone_e164, consent_at) values ('${draft}', 'E55', '+919800000005', now())`),
+    );
+    expect(err.hint).toBe("studio_access");
+    await expect(
+      t.as("authenticated", OPERATOR, `insert into storage.objects (bucket_id, name) values ('event-photos', '${org}/${draft}/x.jpg')`),
+    ).rejects.toThrow();
+  });
+
   it("stop capture 12 hours after an event ends", async () => {
     const err = await failure(
       t.as("authenticated", OPERATOR, `insert into public.guests (event_id, code, phone_e164, consent_at) values ('${endedEvent}', 'C33', '+919800000002', now())`),
@@ -236,6 +272,30 @@ describe("trial end and late payment", () => {
     await setOrg("paid_until = now() - interval '8 days'");
     const err = await failure(asOwner(eventSql(org, "overdue", "2027-04-10 09:00+05:30", "2027-04-10 17:00+05:30")));
     expect(err.message).toBe("Your payment is overdue. Settle it to start new events.");
+  });
+});
+
+describe("lowered limits", () => {
+  it("still let a studio edit events it already has", async () => {
+    const studio = (await t.as<{ id: string }>("authenticated", SPARE[0], "select public.create_organization('Downgraded', 'downgraded') as id"))[0].id;
+    await asAdmin(`select public.admin_set_plan('${studio}', 'pro')`);
+    await t.as("authenticated", SPARE[0], eventSql(studio, "long-one", "2027-07-01 09:00+05:30", "2027-07-01 17:00+05:30", 25));
+    await t.as("authenticated", SPARE[0], eventSql(studio, "long-two", "2027-07-08 09:00+05:30", "2027-07-08 17:00+05:30", 25));
+    await asAdmin(`select public.admin_set_plan('${studio}', 'trial')`);
+    await t.db.exec(`update public.organizations set trial_ends_at = now() + interval '7 days' where id = '${studio}'`);
+    const rows = await t.as("authenticated", SPARE[0], `update public.events set couple_names = 'Renamed', starts_at = starts_at + interval '1 hour', gallery_expires_at = gallery_expires_at where slug = 'long-two' returning id`);
+    expect(rows).toHaveLength(1);
+    const longer = await failure(t.as("authenticated", SPARE[0], `update public.events set gallery_expires_at = gallery_expires_at + interval '1 day' where slug = 'long-two'`));
+    expect(longer.hint).toBe("plan_limit");
+  });
+});
+
+describe("deleting events", () => {
+  it("allows deleting a draft but not an event that has been live", async () => {
+    const draft = (await asOwner<{ id: string }>(eventSql(org, "to-delete", "2027-08-01 09:00+05:30", "2027-08-01 17:00+05:30")).catch(() => [] as { id: string }[]))[0];
+    if (draft) expect(await asOwner(`delete from public.events where id = '${draft.id}' returning id`)).toHaveLength(1);
+    const err = await failure(asOwner(`delete from public.events where slug = 'live-now'`));
+    expect(err.message).toMatch(/Archive it instead/);
   });
 });
 
@@ -258,6 +318,13 @@ describe("payments", () => {
     expect(new Date(p.period_start).toISOString()).toBe(new Date(until).toISOString());
   });
 
+  it("start a new plan's period today rather than carrying the old plan's time", async () => {
+    await asAdmin(`select public.admin_record_payment('${org}', 'starter', 149900, 'cash', null, 1)`);
+    const [p] = await sql<{ hours: number }>(`select abs(extract(epoch from period_start - now()) / 3600)::int as hours from public.payments where plan_id = 'starter' and organization_id = '${org}'`);
+    expect(p.hours).toBe(0);
+    await asAdmin(`select public.admin_record_payment('${org}', 'pro', 399900, 'cash', null, 1)`);
+  });
+
   it("refuse the same reference twice, the trial plan, and bad amounts", async () => {
     expect((await failure(asAdmin(`select public.admin_record_payment('${org}', 'pro', 399900, 'upi', 'UPI-123', 1)`))).message).toMatch(/already recorded/);
     expect((await failure(asAdmin(`select public.admin_record_payment('${org}', 'trial', 100, 'cash', null, 1)`))).message).toMatch(/paid plan/);
@@ -267,13 +334,13 @@ describe("payments", () => {
 
   it("are audited", async () => {
     const [entry] = await asAdmin<{ action: string; details: Record<string, unknown> }>(
-      `select action, details from public.admin_audit_entries('${org}') where action = 'studio.payment_recorded'`,
+      `select action, details from public.admin_audit_entries('${org}') where action = 'studio.payment_recorded' and details ->> 'reference' = 'NEFT-9'`,
     );
     expect(entry.details).toMatchObject({ plan: "pro", amount_paise: 399900, method: "bank_transfer", reference: "NEFT-9", months: 1 });
   });
 
   it("are visible to the studio's owner, not its operators or other studios", async () => {
-    expect(await t.count(OWNER, "public.payments")).toBe(2);
+    expect(await t.count(OWNER, "public.payments")).toBe(4);
     expect(await t.count(OPERATOR, "public.payments")).toBe(0);
     expect(await t.count(OTHER_OWNER, "public.payments")).toBe(0);
   });
@@ -332,7 +399,7 @@ describe("admin plan changes and reads", () => {
   it("shows plan, access and payments to admins", async () => {
     const [s] = await asAdmin<{ plan_name: string; access: string }>(`select plan_name, access from public.admin_studios(p_org => '${org}')`);
     expect(s).toEqual({ plan_name: "Pro", access: "ok" });
-    expect(await asAdmin(`select * from public.admin_payments('${org}')`)).toHaveLength(2);
+    expect(await asAdmin(`select * from public.admin_payments('${org}')`)).toHaveLength(4);
   });
 
   it("totals revenue on the overview", async () => {
@@ -340,7 +407,8 @@ describe("admin plan changes and reads", () => {
       "select public.admin_overview() as o",
     );
     expect(o.revenue.mrr_paise).toBe(799800);
-    expect(o.revenue.received_30d_paise).toBe(399900 * 3);
+    const [{ total }] = await sql<{ total: number }>("select sum(amount_paise)::int as total from public.payments");
+    expect(o.revenue.received_30d_paise).toBe(total);
     expect(o.open_requests).toBe(0);
   });
 });

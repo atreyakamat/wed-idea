@@ -8,7 +8,7 @@ import { publicEnv } from "@/lib/env";
 import { themeForEvent } from "@/lib/events/design";
 import { getEvent } from "@/lib/events/queries";
 import { resolveTheme } from "@/lib/polaroid/theme";
-import { SUSPENDED_MESSAGE } from "@/lib/studio/status";
+import { accessFor, blockedMessage, canCapture } from "@/lib/studio/status";
 import { CaptureStation } from "./capture-station";
 
 export const metadata = { title: "Capture" };
@@ -39,13 +39,19 @@ async function Capture({ params }: Readonly<{ params: PageProps<"/dashboard/even
     </div>
   );
 
-  if (studio.status === "suspended") {
+  const access = accessFor(studio);
+  if (event.status === "live" && !canCapture(access, event.ends_at)) {
     return (
       <>
         {header}
         <div className="rounded-3xl border border-dashed border-danger/40 px-6 py-14 text-center">
           <p className="font-display text-2xl italic">Capture is paused</p>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-muted">{SUSPENDED_MESSAGE} Guests can still open the galleries they already have.</p>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-muted">{blockedMessage(access)} Guests can still open the galleries they already have.</p>
+          {access === "suspended" ? null : (
+            <Link href="/dashboard/billing" className="mt-6 inline-block rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper">
+              See plans
+            </Link>
+          )}
         </div>
       </>
     );

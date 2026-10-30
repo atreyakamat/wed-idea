@@ -31,6 +31,8 @@ export type GuestGallery =
       expiresAt: string;
       theme: unknown;
       photos: GalleryPhoto[];
+      /** False on plans that remove the Cute Wedding Polaroid credit. */
+      showBranding: boolean;
     };
 
 type GuestWithEvent = {
@@ -43,6 +45,7 @@ type GuestWithEvent = {
     gallery_expires_at: string;
     status: EventStatus;
     theme: unknown;
+    organizations: { plans: { remove_branding: boolean } | null } | null;
   } | null;
 };
 
@@ -57,7 +60,7 @@ export async function getGuestGallery(token: string, now: Date = new Date()): Pr
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("guests")
-    .select("id, name, events (couple_names, venue, starts_at, gallery_expires_at, status, theme)")
+    .select("id, name, events (couple_names, venue, starts_at, gallery_expires_at, status, theme, organizations (plans (remove_branding)))")
     .eq("access_token", token)
     .maybeSingle<GuestWithEvent>();
   if (error) throw new Error(`Couldn't load the gallery: ${error.message}`);
@@ -98,6 +101,7 @@ export async function getGuestGallery(token: string, now: Date = new Date()): Pr
     venue: event.venue,
     startsAt: event.starts_at,
     expiresAt: event.gallery_expires_at,
+    showBranding: !event.organizations?.plans?.remove_branding,
     theme: event.theme,
     photos: galleryPhotos,
   };

@@ -10,7 +10,7 @@ import { getEvent } from "@/lib/events/queries";
 import { canUnlockDesign, checkTransition, type EventStatus } from "@/lib/events/status";
 import { getTemplate } from "@/lib/polaroid/templates";
 import { eventThemeSchema } from "@/lib/polaroid/theme";
-import { isSuspendedError, SUSPENDED_MESSAGE } from "@/lib/studio/status";
+import { accessFor, blockedMessage, friendlyDbError } from "@/lib/studio/status";
 import type { Palette, PaletteKey } from "@/lib/polaroid/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -29,7 +29,8 @@ async function loadEvent(eventId: string) {
 
 export async function createEvent(_prev: FormState, formData: FormData): Promise<FormState> {
   const { studio } = await requireStudioManager();
-  if (studio.status === "suspended") return { error: SUSPENDED_MESSAGE, values: formValues(formData) };
+  const blocked = blockedMessage(accessFor(studio));
+  if (blocked) return { error: blocked, values: formValues(formData) };
   const parsed = parseEventDetails(formData);
   if (!parsed.ok) return { error: null, fieldErrors: parsed.fieldErrors, values: parsed.values };
 
@@ -42,8 +43,7 @@ export async function createEvent(_prev: FormState, formData: FormData): Promise
 
   if (error) {
     if (error.code === "23505") return { error: null, fieldErrors: SLUG_TAKEN, values: formValues(formData) };
-    if (isSuspendedError(error)) return { error: SUSPENDED_MESSAGE, values: formValues(formData) };
-    return { error: "Couldn't create the event. Try again.", values: formValues(formData) };
+    return { error: friendlyDbError(error) ?? "Couldn't create the event. Try again.", values: formValues(formData) };
   }
 
   redirect(`/dashboard/events/${data.id}`);
@@ -58,7 +58,7 @@ export async function updateEventDetails(eventId: string, _prev: FormState, form
   const { error } = await supabase.from("events").update(parsed.data).eq("id", eventId).eq("organization_id", studio.id);
   if (error) {
     if (error.code === "23505") return { error: null, fieldErrors: SLUG_TAKEN, values: formValues(formData) };
-    return { error: "Couldn't save the details. Try again." };
+    return { error: friendlyDbError(error) ?? "Couldn't save the details. Try again." };
   }
 
   refresh();
@@ -148,7 +148,7 @@ export async function changeStatus(eventId: string, to: EventStatus): Promise<Fo
     .eq("id", eventId)
     .eq("organization_id", studio.id)
     .eq("status", event.status);
-  if (error) return { error: isSuspendedError(error) ? SUSPENDED_MESSAGE : "Couldn't change the event status. Try again." };
+  if (error) return { error: friendlyDbError(error) ?? "Couldn't change the event status. Try again." };
 
   refresh();
   return { error: null };

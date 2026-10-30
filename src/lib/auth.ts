@@ -16,6 +16,8 @@ export type Studio = {
   status: StudioStatus;
   trialEndsAt: string;
   suspendedReason: string | null;
+  planId: string;
+  paidUntil: string | null;
 };
 
 /**
@@ -43,7 +45,7 @@ export async function listStudios(userId: string): Promise<Studio[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("organization_members")
-    .select("role, created_at, organizations (id, name, slug, status, trial_ends_at, suspended_reason)")
+    .select("role, created_at, organizations (id, name, slug, status, trial_ends_at, suspended_reason, plan_id, paid_until)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
   if (error) throw new Error(`Couldn't load your studios: ${error.message}`);
@@ -60,6 +62,8 @@ export async function listStudios(userId: string): Promise<Studio[]> {
         status: org.status as StudioStatus,
         trialEndsAt: org.trial_ends_at,
         suspendedReason: org.suspended_reason,
+        planId: org.plan_id,
+        paidUntil: org.paid_until,
       },
     ];
   });

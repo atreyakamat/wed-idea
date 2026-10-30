@@ -77,10 +77,15 @@ async function Gallery({ params }: Readonly<{ params: PageProps<"/g/[token]">["p
       ) : null}
 
       <footer className="mt-16 text-center text-xs text-muted">
-        Only people with this link can see these photos.{" "}
-        <Link href="/" className="font-display italic underline-offset-4 hover:underline">
-          Cute Wedding Polaroid
-        </Link>
+        Only people with this link can see these photos.
+        {gallery.showBranding ? (
+          <>
+            {" "}
+            <Link href="/" className="font-display italic underline-offset-4 hover:underline">
+              Cute Wedding Polaroid
+            </Link>
+          </>
+        ) : null}
       </footer>
     </div>
   );

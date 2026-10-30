@@ -15,6 +15,9 @@ export function formatInr(paise: number): string {
   return inr.format(paise / 100);
 }
 
+/** Largest amount the database stores: 2^31 - 1 paise. */
+export const MAX_PAISE = 2_147_483_647;
+
 /**
  * Parses a rupee amount typed by an admin ("49", "1,250.50") into paise.
  * Returns null for anything that isn't a valid non-negative amount.
@@ -24,5 +27,6 @@ export function rupeesToPaise(input: string): number | null {
   if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
   const [whole, fraction = ""] = cleaned.split(".");
   const paise = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
-  return Number.isSafeInteger(paise) ? paise : null;
+  // The database stores paise as a 32-bit integer (up to about ₹2.1 crore).
+  return paise <= MAX_PAISE ? paise : null;
 }

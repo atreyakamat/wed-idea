@@ -4,9 +4,11 @@ import { Suspense } from "react";
 import { SignupsChart } from "@/components/admin/signups-chart";
 import { StatTile } from "@/components/admin/stat-tile";
 import { StudioStatusBadge } from "@/components/admin/studio-status-badge";
-import { describeAudit, formatBytes, formatCount } from "@/lib/admin/format";
-import { getOverview, listAudit, listStudios } from "@/lib/admin/queries";
+import { auditSubject, describeAudit, formatBytes, formatCount } from "@/lib/admin/format";
+import { getOverview, listAudit, listPlanRequests, listStudios, type PlanRequest } from "@/lib/admin/queries";
+import { formatInr } from "@/lib/domain/money";
 import { formatIstDate } from "@/lib/events/time";
+import { dismissRequest } from "./actions";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -22,8 +24,8 @@ export default function AdminOverviewPage() {
 }
 
 async function Overview() {
-  const [o, studios, audit] = await Promise.all([getOverview(), listStudios(), listAudit({ limit: 6 })]);
-  const needsAttention = o.studios.past_due + o.studios.suspended;
+  const [o, studios, audit, requests] = await Promise.all([getOverview(), listStudios(), listAudit({ limit: 6 }), listPlanRequests()]);
+  const needsAttention = o.studios.past_due + o.studios.suspended + o.studios.trials_ended;
 
   return (
     <div className="mt-8 flex flex-col gap-8">
@@ -39,10 +41,19 @@ async function Overview() {
         <StatTile
           label="Need attention"
           value={formatCount(needsAttention)}
-          note={`${o.studios.past_due} payment due · ${o.studios.suspended} suspended`}
-          href={o.studios.suspended ? "/admin/studios?status=suspended" : "/admin/studios?status=past_due"}
+          note={`${o.studios.past_due} payment due · ${o.studios.trials_ended} trial ended · ${o.studios.suspended} suspended`}
+          href="/admin/studios?status=attention"
         />
       </section>
+
+      <section aria-label="Revenue" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile label="Monthly revenue" value={formatInr(Number(o.revenue.mrr_paise))} note="Paid plans, at list price" />
+        <StatTile label="Received" value={formatInr(Number(o.revenue.received_30d_paise))} note="Last 30 days" />
+        <StatTile label="Upgrade requests" value={formatCount(o.open_requests)} note={o.open_requests ? "Waiting for you below" : "None waiting"} />
+        <StatTile label="Trials ended" value={formatCount(o.studios.trials_ended)} note="Not yet on a plan" href="/admin/studios?status=attention" />
+      </section>
+
+      {requests.length ? <UpgradeRequests requests={requests} /> : null}
 
       <section aria-label="Usage" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile label="Live now" value={formatCount(o.events.live)} note={`${formatCount(o.events.total)} events in total`} href="/admin/events?status=live" />
@@ -96,7 +107,7 @@ async function Overview() {
               {audit.map((a) => (
                 <li key={a.id} className="py-2.5 text-sm">
                   <p>
-                    <span className="font-medium">{a.studio_name ?? "Deleted studio"}</span> · {describeAudit(a.action, a.details)}
+                    <span className="font-medium">{auditSubject(a)}</span> · {describeAudit(a.action, a.details)}
                   </p>
                   <p className="text-xs text-muted">
                     {a.actor_email ?? "Unknown admin"} · {formatIstDate(a.created_at)}
@@ -108,5 +119,45 @@ async function Overview() {
         </section>
       </div>
     </div>
+  );
+}
+
+function UpgradeRequests({ requests }: Readonly<{ requests: PlanRequest[] }>) {
+  return (
+    <section className="rounded-2xl border border-accent/40 bg-surface">
+      <h2 className="border-b border-line px-5 py-4 font-semibold">Upgrade requests</h2>
+      <ul className="divide-y divide-line">
+        {requests.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+            <span className="min-w-0">
+              <Link href={`/admin/studios/${r.organization_id}`} className="font-medium hover:text-accent">
+                {r.studio_name}
+              </Link>
+              <span className="text-muted">
+                {" "}
+                · {r.current_plan} → {r.plan_name}
+              </span>
+              <span className="block text-xs text-muted">
+                {r.requested_by_email ?? "Unknown"} · {formatIstDate(r.created_at)}
+                {r.note ? ` · "${r.note}"` : ""}
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <Link
+                href={`/admin/studios/${r.organization_id}?plan=${r.plan_id}#payment`}
+                className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-paper hover:opacity-90"
+              >
+                Record payment
+              </Link>
+              <form action={dismissRequest.bind(null, r.id)}>
+                <button type="submit" className="rounded-full border border-line px-4 py-2 text-xs font-semibold hover:border-ink">
+                  Dismiss
+                </button>
+              </form>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

@@ -152,6 +152,7 @@ describe("photo and seat limits", () => {
 
   beforeAll(async () => {
     eventId = (await sql<{ id: string }>("select id from public.events where slug = 'december-one'"))[0].id;
+    await t.db.exec(`update public.events set status = 'live' where id = '${eventId}'`);
     guestId = (
       await t.as<{ id: string }>(
         "authenticated",
@@ -233,15 +234,17 @@ describe("trial end and late payment", () => {
   });
 
   it("don't reopen capture when the end date is pushed out", async () => {
-    await asOwner(`update public.events set ends_at = now() + interval '300 days', gallery_expires_at = now() + interval '305 days' where id = '${endedEvent}'`).catch(() => undefined);
-    await t.db.exec(`update public.events set ends_at = now() + interval '300 days' where id = '${endedEvent}'`);
+    // The studio can't do this (events last up to 7 days); force it to prove the cap holds anyway.
+    const pushed = await failure(asOwner(`update public.events set ends_at = now() + interval '300 days', gallery_expires_at = now() + interval '305 days' where id = '${endedEvent}'`));
+    expect(pushed.hint).toBe("event_rule");
+    await t.db.exec(`update public.events set ends_at = now() + interval '300 days', gallery_expires_at = now() + interval '305 days' where id = '${endedEvent}'`);
     await t.db.exec(`update public.organizations set trial_ends_at = now() - interval '4 days' where id = '${org}'`);
     const err = await failure(
       t.as("authenticated", OPERATOR, `insert into public.guests (event_id, code, phone_e164, consent_at) values ('${endedEvent}', 'D44', '+919800000004', now())`),
     );
     expect(err.message).toMatch(/trial has ended/);
     await t.db.exec(`update public.organizations set trial_ends_at = now() - interval '1 minute' where id = '${org}'`);
-    await t.db.exec(`update public.events set ends_at = now() - interval '2 days' where id = '${endedEvent}'`);
+    await t.db.exec(`update public.events set ends_at = now() - interval '2 days', gallery_expires_at = now() + interval '5 days' where id = '${endedEvent}'`);
   });
 
   it("only let live events keep capturing", async () => {
@@ -290,8 +293,40 @@ describe("lowered limits", () => {
   });
 });
 
+describe("event rules", () => {
+  let ev: string;
+  beforeAll(async () => {
+    ev = (await sql<{ id: string }>(`insert into public.events (organization_id, slug, couple_names, starts_at, ends_at, orders_open_at, orders_close_at, gallery_expires_at, print_price_paise)
+      values ('${otherOrg}', 'rules', 'Rule Couple', now() + interval '2 hours', now() + interval '10 hours', now(), now() + interval '10 hours', now() + interval '7 days', 4900) returning id`))[0].id;
+  });
+
+  it("only allows the app's status moves", async () => {
+    expect((await failure(t.as("authenticated", OTHER_OWNER, `update public.events set status = 'archived' where id = '${ev}'`))).message).toBe("A draft event can't move to archived.");
+    await t.as("authenticated", OTHER_OWNER, `update public.events set status = 'live' where id = '${ev}'`);
+    expect((await failure(t.as("authenticated", OTHER_OWNER, `update public.events set status = 'draft' where id = '${ev}'`))).hint).toBe("event_rule");
+  });
+
+  it("fixes the start once live, and caps events at 7 days", async () => {
+    expect((await failure(t.as("authenticated", OTHER_OWNER, `update public.events set starts_at = starts_at + interval '1 day', ends_at = ends_at + interval '1 day', gallery_expires_at = gallery_expires_at + interval '1 day' where id = '${ev}'`))).message).toMatch(/start can't change/);
+    expect((await failure(t.as("authenticated", OTHER_OWNER, `update public.events set ends_at = ends_at + interval '100 days', gallery_expires_at = gallery_expires_at + interval '100 days' where id = '${ev}'`))).message).toBe("An event can last up to 7 days.");
+  });
+
+  it("goes live at most a day before it starts", async () => {
+    const future = (await t.as<{ id: string }>("authenticated", OTHER_OWNER, eventSql(otherOrg, "far-future", "2027-09-01 09:00+05:30", "2027-09-01 17:00+05:30")))[0].id;
+    const err = await failure(t.as("authenticated", OTHER_OWNER, `update public.events set status = 'live' where id = '${future}'`));
+    expect(err.message).toMatch(/a day before it starts/);
+  });
+
+  it("adds guests only at live events", async () => {
+    const draft = (await t.as<{ id: string }>("authenticated", OTHER_OWNER, eventSql(otherOrg, "draft-guests", "2027-10-01 09:00+05:30", "2027-10-01 17:00+05:30")))[0].id;
+    const err = await failure(t.as("authenticated", OTHER_OWNER, `insert into public.guests (event_id, code, phone_e164, consent_at) values ('${draft}', 'F66', '+919800000006', now())`));
+    expect(err.message).toBe("Guests and photos can only be added while the event is live.");
+  });
+});
+
 describe("deleting events", () => {
-  it("allows deleting a draft but not an event that has been live", async () => {
+  it("allows deleting a draft but not an event that has been live, even after a status reset", async () => {
+    await expect(asOwner(`update public.events set status = 'draft' where slug = 'live-now'`)).rejects.toThrow();
     const draft = (await asOwner<{ id: string }>(eventSql(org, "to-delete", "2027-08-01 09:00+05:30", "2027-08-01 17:00+05:30")).catch(() => [] as { id: string }[]))[0];
     if (draft) expect(await asOwner(`delete from public.events where id = '${draft.id}' returning id`)).toHaveLength(1);
     const err = await failure(asOwner(`delete from public.events where slug = 'live-now'`));

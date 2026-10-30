@@ -307,6 +307,7 @@ describe("suspension has no back doors", () => {
 
   beforeAll(async () => {
     await asAdmin(`select public.admin_set_studio_status('${orgA}', 'active')`);
+    await t.db.exec(`update public.events set status = 'live' where id = '${eventA}'`);
     guestId = (
       await t.as<{ id: string }>(
         "authenticated",

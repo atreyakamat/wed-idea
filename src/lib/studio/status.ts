@@ -136,10 +136,10 @@ export function studioNotice(studio: AccountFields & { suspendedReason: string |
 type DbError = { code?: string; message?: string; hint?: string | null } | null | undefined;
 
 /**
- * The database's own message for a plan limit or access refusal, written to
+ * The database's own message for a plan limit, access or event-rule refusal, written to
  * be shown as-is. Null for any other error.
  */
 export function friendlyDbError(error: DbError): string | null {
   if (!error?.message) return null;
-  return error.hint === "plan_limit" || error.hint === "studio_access" ? error.message : null;
+  return error.hint === "plan_limit" || error.hint === "studio_access" || error.hint === "event_rule" ? error.message : null;
 }

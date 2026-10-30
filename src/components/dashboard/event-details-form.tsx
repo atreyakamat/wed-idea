@@ -17,6 +17,8 @@ export type EventDetailsDefaults = {
 };
 
 type Props = {
+  /** The start can't change once an event has been live. */
+  startLocked?: boolean;
   action: (prev: FormState, formData: FormData) => Promise<FormState>;
   defaults: EventDetailsDefaults;
   submitLabel: string;
@@ -25,7 +27,7 @@ type Props = {
   readOnly?: boolean;
 };
 
-export function EventDetailsForm({ action, defaults, submitLabel, autoSlug = false, readOnly = false }: Props) {
+export function EventDetailsForm({ action, defaults, submitLabel, autoSlug = false, readOnly = false, startLocked = false }: Props) {
   const [state, formAction] = useActionState(action, initialFormState);
   const v = { ...defaults, ...state.values };
   const e = state.fieldErrors ?? {};
@@ -61,7 +63,16 @@ export function EventDetailsForm({ action, defaults, submitLabel, autoSlug = fal
           error={e.slug}
         />
         <Field label="Venue" name="venue" maxLength={160} placeholder="Assagao, Goa" defaultValue={v.venue} error={e.venue} className="sm:col-span-2" />
-        <Field label="Starts" name="starts_at" type="datetime-local" required defaultValue={v.starts_at} error={e.starts_at} hint="India time (IST)" />
+        <Field
+          label="Starts"
+          name="starts_at"
+          type="datetime-local"
+          required
+          readOnly={startLocked}
+          defaultValue={v.starts_at}
+          error={e.starts_at}
+          hint={startLocked ? "Fixed once the event has been live." : "India time (IST)"}
+        />
         <Field label="Ends" name="ends_at" type="datetime-local" required defaultValue={v.ends_at} error={e.ends_at} />
         <Field
           label="Print orders open"

@@ -281,6 +281,79 @@ create trigger events_keep_live
   before delete on public.events
   for each row execute function public.keep_live_events();
 
+-- Event rules for studio users (admins and server code are not limited):
+-- * status moves only along draft -> live -> closed -> archived, with
+--   closed <-> live and archived -> closed (same as the app);
+-- * an event lasts at most 7 days, and goes live at most a day before it
+--   starts, so dates can't be used to dodge the monthly event count;
+-- * once an event has been live its start is fixed, so its gallery (measured
+--   from its end) can't be stretched by moving it;
+-- * guests and photos are only added to a live event.
+create or replace function public.enforce_event_rules()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') or public.is_admin() then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' and new.status is distinct from old.status and not (
+    (old.status = 'draft' and new.status = 'live')
+    or (old.status = 'live' and new.status = 'closed')
+    or (old.status = 'closed' and new.status in ('live', 'archived'))
+    or (old.status = 'archived' and new.status = 'closed')
+  ) then
+    raise exception 'A % event can''t move to %.', old.status, new.status using errcode = '22023', hint = 'event_rule';
+  end if;
+
+  if new.ends_at - new.starts_at > interval '7 days' then
+    raise exception 'An event can last up to 7 days.' using errcode = '22023', hint = 'event_rule';
+  end if;
+
+  if tg_op = 'UPDATE' and old.status <> 'draft' and new.starts_at is distinct from old.starts_at then
+    raise exception 'The start can''t change once an event has been live.' using errcode = '22023', hint = 'event_rule';
+  end if;
+
+  if new.status = 'live' and (tg_op = 'INSERT' or old.status is distinct from 'live')
+     and now() < new.starts_at - interval '1 day' then
+    raise exception 'An event can go live from a day before it starts. For a test run, set its date to today.'
+      using errcode = '22023', hint = 'event_rule';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger events_enforce_rules
+  before insert or update on public.events
+  for each row execute function public.enforce_event_rules();
+
+create or replace function public.require_live_event()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') or public.is_admin() then
+    return new;
+  end if;
+  if not exists (select 1 from public.events e where e.id = new.event_id and e.status = 'live') then
+    raise exception 'Guests and photos can only be added while the event is live.' using errcode = '22023', hint = 'event_rule';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger guests_require_live_event
+  before insert on public.guests
+  for each row execute function public.require_live_event();
+
+create trigger photos_require_live_event
+  before insert on public.photos
+  for each row execute function public.require_live_event();
+
 -- Storage: a file may go into an event's folder only while capture is open
 -- there. Paths are "<studio>/<event>/<guest>/<file>".
 create or replace function public.can_upload_photo(p_path text)

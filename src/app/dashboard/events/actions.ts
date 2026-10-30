@@ -138,7 +138,7 @@ export async function unlockDesign(eventId: string): Promise<void> {
 
 export async function changeStatus(eventId: string, to: EventStatus): Promise<FormState> {
   const { studio, event } = await loadEvent(eventId);
-  const check = checkTransition(event.status, to, isDesignLocked(event.theme));
+  const check = checkTransition(event.status, to, isDesignLocked(event.theme), event.starts_at);
   if (!check.allowed) return { error: check.reason };
 
   const supabase = await createClient();

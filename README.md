@@ -37,19 +37,23 @@ src/
     dashboard/         events list, new event, event page (design, prints, details, status), capture screen
     g/[token]/         a guest's private gallery
     templates/         public template gallery and A4 print sheet preview
+    admin/             platform admin: two-step sign-in, overview, studios, events, audit log
   components/
-    dashboard/         event forms, design editor, status controls
+    admin/             stat tiles, status badge, filters, sign-up chart
+    dashboard/         event forms, design editor, status controls, account banner
     polaroid/          SVG polaroid card, decorations, print sheet, filters
     ui/                form fields and buttons
   lib/
     auth.ts            requireUser / requireStudio / requireStudioManager
+    admin/             requireAdmin, admin queries, formatting
+    studio/            studio status, trial countdown and banner text
     capture/           photo processing, storage paths, WhatsApp message and link
     gallery/           guest gallery lookup (by secret token) and polaroid PNG export
     events/            event form parsing (IST), status rules, design defaults, queries
     polaroid/          templates, filters, text fitting, sheet layout, theme schema
     domain/            guest codes, money, phone, billing, order window
     supabase/          server, admin (service role) and proxy-session clients
-  proxy.ts             refreshes the session and guards /dashboard and /onboarding
+  proxy.ts             refreshes the session; guards /dashboard, /onboarding and /admin
 supabase/
   config.toml          local Supabase settings
   migrations/          schema, studios, row-level security, storage bucket
@@ -66,8 +70,46 @@ supabase/
   - Pages are marked `noindex`, and links never leak through the Referer header.
   - Malformed links get a 404 from the proxy.
   - After the gallery's expiry date the photos are hidden. Deleting the files automatically is still to do.
-- **Platform admins** (`admin_users`) can see every studio for support. They are added by hand in SQL only.
+- **Platform admins** (`admin_users`) run the `/admin` console. See [Platform admin](#platform-admin).
 - **Data formats:** money is stored as whole paise and phone numbers in E.164 (`+919812345678`). Event times are entered in India time.
+
+## Platform admin
+
+`/admin` is for you, the platform owner, not for studios.
+
+- **Overview:** studios by status, trials ending this week, live events, guests, photos, storage and sign-ups per week.
+- **Studios:** search by name, link or owner email; open a studio to see its team, events, usage and history.
+- **Actions:** suspend (a reason is required and shown to the studio), reactivate, mark as payment due, or extend a trial by 7, 14 or 30 days.
+- **Events:** every studio's weddings, read-only, for support.
+- **Audit log:** every admin change with who, when and why. Nobody can edit or delete entries.
+
+**Studio status.** New studios start on a 14-day trial, one studio per account. A suspended studio can't create events, go live, capture, upload, move events to another studio or open a new studio, but its guests can still open their galleries. Trials ending doesn't block anything yet; plans and limits come next.
+
+**Security.**
+- Admin powers need two-step sign-in. The database's `is_admin()` is true only for an `admin_users` row **and** a session whose second step (`aal2`) used that admin's registered authenticator. A stolen password alone gets nothing.
+- Authenticator setup is only open for **one hour** after an admin is added or reset. Set it up straight away.
+- Status and trial fields can only change through the audited admin functions, never by a direct update, even by an admin.
+- Audit entries keep the studio's name and the admin's email, so deleting either never rewrites history.
+- Non-admins who open `/admin` get a 404.
+
+**Make yourself an admin.** Sign up normally, then run this in the Supabase SQL editor:
+
+```sql
+insert into public.admin_users (user_id)
+select id from auth.users where email = 'you@example.com';
+```
+
+Within the hour, open `/admin`, scan the QR code with an authenticator app (Google Authenticator, 1Password, Authy) and enter the code.
+
+Adding an admin removes any authenticator already on that account, so one planted earlier with a stolen password can't be used.
+
+**Missed the hour, or lost your phone?** Reopen setup for an hour. This also removes the old authenticator:
+
+```sql
+update public.admin_users
+set mfa_factor_id = null, mfa_setup_until = now() + interval '1 hour'
+where user_id = (select id from auth.users where email = 'you@example.com');
+```
 
 ## Local development
 
@@ -102,7 +144,8 @@ To reset the local database and re-run all migrations: `npx supabase db reset`.
 3. Under **Authentication → URL Configuration**:
    - set the Site URL to your domain;
    - add `https://<your-domain>/auth/callback` as a redirect URL.
-4. In Netlify, add the four variables from `.env.example` under **Site configuration → Environment variables**. `netlify.toml` sets the build command and Node version.
+4. Under **Authentication → Multi-Factor**, check that TOTP (app authenticator) is enabled. It is by default.
+5. In Netlify, add the four variables from `.env.example` under **Site configuration → Environment variables**. `netlify.toml` sets the build command and Node version.
 
 ## Scripts
 

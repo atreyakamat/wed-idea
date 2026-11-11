@@ -8,6 +8,7 @@ import { publicEnv } from "@/lib/env";
 import { themeForEvent } from "@/lib/events/design";
 import { getEvent } from "@/lib/events/queries";
 import { resolveTheme } from "@/lib/polaroid/theme";
+import { SUSPENDED_MESSAGE } from "@/lib/studio/status";
 import { CaptureStation } from "./capture-station";
 
 export const metadata = { title: "Capture" };
@@ -37,6 +38,18 @@ async function Capture({ params }: Readonly<{ params: PageProps<"/dashboard/even
       </div>
     </div>
   );
+
+  if (studio.status === "suspended") {
+    return (
+      <>
+        {header}
+        <div className="rounded-3xl border border-dashed border-danger/40 px-6 py-14 text-center">
+          <p className="font-display text-2xl italic">Capture is paused</p>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-muted">{SUSPENDED_MESSAGE} Guests can still open the galleries they already have.</p>
+        </div>
+      </>
+    );
+  }
 
   if (event.status !== "live") {
     return (

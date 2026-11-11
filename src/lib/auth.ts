@@ -4,13 +4,18 @@ import { createClient } from "@/lib/supabase/server";
 
 export type MemberRole = "owner" | "admin" | "operator";
 
-export type SessionUser = { id: string; email: string | null };
+export type StudioStatus = "trialing" | "active" | "past_due" | "suspended";
+
+export type SessionUser = { id: string; email: string | null; aal: "aal1" | "aal2" };
 
 export type Studio = {
   id: string;
   name: string;
   slug: string;
   role: MemberRole;
+  status: StudioStatus;
+  trialEndsAt: string;
+  suspendedReason: string | null;
 };
 
 /**
@@ -26,7 +31,11 @@ export async function requireUser(next?: string): Promise<SessionUser> {
   if (error || !claims?.sub) {
     redirect(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
   }
-  return { id: claims.sub, email: typeof claims.email === "string" ? claims.email : null };
+  return {
+    id: claims.sub,
+    email: typeof claims.email === "string" ? claims.email : null,
+    aal: claims.aal === "aal2" ? "aal2" : "aal1",
+  };
 }
 
 /** The user's studios, oldest membership first. RLS limits rows to their own. */
@@ -34,14 +43,25 @@ export async function listStudios(userId: string): Promise<Studio[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("organization_members")
-    .select("role, created_at, organizations (id, name, slug)")
+    .select("role, created_at, organizations (id, name, slug, status, trial_ends_at, suspended_reason)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
   if (error) throw new Error(`Couldn't load your studios: ${error.message}`);
 
   return (data ?? []).flatMap((row) => {
     const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
-    return org ? [{ id: org.id, name: org.name, slug: org.slug, role: row.role as MemberRole }] : [];
+    if (!org) return [];
+    return [
+      {
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        role: row.role as MemberRole,
+        status: org.status as StudioStatus,
+        trialEndsAt: org.trial_ends_at,
+        suspendedReason: org.suspended_reason,
+      },
+    ];
   });
 }
 

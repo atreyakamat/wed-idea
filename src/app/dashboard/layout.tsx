@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { StudioBanner } from "@/components/dashboard/studio-banner";
 import { requireStudio } from "@/lib/auth";
+import { studioNotice } from "@/lib/studio/status";
 import { signOut } from "../(auth)/actions";
 
 export const metadata: Metadata = {
@@ -27,7 +29,12 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           </Suspense>
         </div>
       </header>
-      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">{children}</div>
+      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
+        <Suspense fallback={null}>
+          <AccountNotice />
+        </Suspense>
+        {children}
+      </div>
     </div>
   );
 }
@@ -39,6 +46,12 @@ async function StudioName() {
       {studio.name} · {studio.role}
     </span>
   );
+}
+
+async function AccountNotice() {
+  const { studio } = await requireStudio();
+  const notice = studioNotice(studio);
+  return notice ? <StudioBanner notice={notice} /> : null;
 }
 
 async function Account() {

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { FormState } from "@/components/ui/form";
 import { publicEnv } from "@/lib/env";
+import { adminNext } from "@/lib/admin/next";
 import { safeAppRedirect } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,7 +40,11 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
     };
   }
 
-  redirect(safeAppRedirect(formData.get("next")));
+  // A password sign-in is never two-step yet, so admin pages go straight to
+  // the code screen (the proxy would send them there anyway).
+  const target = safeAppRedirect(formData.get("next"));
+  const isAdminPage = target === "/admin" || target.startsWith("/admin/") || target.startsWith("/admin?");
+  redirect(isAdminPage ? `/admin/mfa?next=${encodeURIComponent(adminNext(target))}` : target);
 }
 
 export async function signUp(_prev: FormState, formData: FormData): Promise<FormState> {

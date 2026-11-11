@@ -9,6 +9,7 @@
   --muted: #6f655d;
   --line: #e7dfd5;
   --accent: #c2546b;
+  --chart: #c2546b;
   --success: #2f7a4f;
   --danger: #b3261e;
 }
@@ -21,6 +22,7 @@
     --muted: #b3a79c;
     --line: #3a312a;
     --accent: #e7849a;
+    --chart: #d66d86;
     --success: #6cc493;
     --danger: #f2b8b5;
   }
@@ -33,6 +35,7 @@
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-accent: var(--accent);
+  --color-chart: var(--chart);
   --color-success: var(--success);
   --color-danger: var(--danger);
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;

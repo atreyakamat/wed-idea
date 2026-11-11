@@ -41,11 +41,11 @@ why.
 
 ```sh
 cd worker
-pip install --only-binary :all: --require-hashes -r requirements-dev.lock
+pip install --only-binary :all: --require-hashes -r requirements.txt
 python -m pytest
 ```
 
-`requirements-dev.lock` pins every dependency with hashes (made with
+`requirements.txt` is the lock file: it pins every dependency (including pytest) with hashes (made with
 `uv pip compile --python-version 3.10 --generate-hashes --only-binary :all:`
 from Pillow, requests and pytest). Regenerate it when you change the
 dependencies in `pyproject.toml`.

@@ -99,3 +99,16 @@ def test_commands_need_login_first(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exit_:
         main(["projects"])
     assert "Connect a PC" in str(exit_.value)
+
+
+def test_upload_retry_after_a_lost_reply_counts_as_done():
+    c, s = client(Response(503), Response(400, {"statusCode": "409", "error": "Duplicate", "message": "The resource already exists"}))
+    c.put("https://storage/upload/sign/x?token=t", b"jpeg")
+    assert len(s.calls) == 2
+
+
+def test_unfinished_upload_is_not_fatal():
+    c, _ = client(Response(422, {"error": "Upload didn't finish. Try that photo again."}))
+    with pytest.raises(ApiError) as err:
+        c.confirm("p", {})
+    assert not err.value.fatal

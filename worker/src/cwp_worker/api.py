@@ -24,6 +24,7 @@ class ApiError(Exception):
     @property
     def fatal(self) -> bool:
         # 401: token revoked. 403: plan limit or studio access. 409: archived.
+        # Anything else (422 "upload didn't finish", 5xx) is worth retrying later.
         return self.status in (401, 403, 409)
 
 
@@ -99,6 +100,9 @@ class Client:
                 self.sleep(2**attempt)
                 continue
             if response.ok:
+                return
+            # A retry after a lost reply: the first try stored the file.
+            if attempt > 0 and response.status_code in (400, 409) and "exist" in response.text.lower():
                 return
             if response.status_code < 500 or attempt == RETRIES:
                 raise ApiError(f"Upload failed ({response.status_code}): {response.text[:200]}", response.status_code)

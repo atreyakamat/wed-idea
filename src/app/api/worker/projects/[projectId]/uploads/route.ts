@@ -24,6 +24,12 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
     return jsonError(403, `This project has reached ${plan.photos_per_event.toLocaleString("en-IN")} photos, the most the ${plan.name} plan allows.`);
   }
 
+  // Caps files in the folder, so upload links that are never confirmed can't
+  // fill storage past the plan's photo limit.
+  const room = await session.supabase.rpc("project_has_file_room", { p_project: project.id });
+  if (room.error) return jsonError(500, "Couldn't prepare the upload. Try again.");
+  if (room.data !== true) return jsonError(403, "This project has too many unfinished uploads. Try again later.");
+
   const photoId = crypto.randomUUID();
   const paths = projectPhotoPaths(project.organization_id, project.id, photoId);
   const bucket = session.supabase.storage.from(PROJECT_BUCKET);

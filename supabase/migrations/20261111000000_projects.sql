@@ -15,6 +15,14 @@
 --   toward the month either way); it can be archived. Its gallery stays open
 --   for the plan's gallery days from the first time it was published, so
 --   unpublishing and publishing again never stretches it.
+-- * The gallery link token is always made here, never chosen by a caller.
+--   A studio can swap it for a new one (any change to it makes a fresh
+--   random token), so a leaked link can be killed.
+-- * Each project folder holds at most 2 files per allowed photo, plus a
+--   little slack, and only "<uuid>.jpg" / "<uuid>.thumb.jpg" names, so storage
+--   can't be filled outside the photo limit.
+-- * File names of deleted photos are remembered, so re-dropping the folder or
+--   restarting the PC app doesn't bring them back.
 -- * The PC worker authenticates with a worker token. The app makes the token,
 --   shows it once and stores only its SHA-256 hash; it never reaches the
 --   database.
@@ -126,6 +134,19 @@ $$;
 
 revoke all on function public.raise_project_access(text) from public, anon, authenticated;
 
+-- A gallery link token: 48 hex characters from two random UUIDs (about 180
+-- random bits). gen_random_uuid() is built in, so no extension schema needed.
+create or replace function public.new_link_token()
+returns text
+language sql
+volatile
+set search_path = ''
+as $$
+  select left(replace(pg_catalog.gen_random_uuid()::text || pg_catalog.gen_random_uuid()::text, '-', ''), 48);
+$$;
+
+revoke all on function public.new_link_token() from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Project rules
 -- ---------------------------------------------------------------------------
@@ -151,6 +172,12 @@ begin
     select * into rec from public.studio_plan_access(new.organization_id);
     perform public.raise_project_access(rec.access);
 
+    -- Set here, never by the caller: the month it counts toward, who made it,
+    -- and an unguessable link token.
+    new.created_at := now();
+    new.created_by := auth.uid();
+    new.access_token := public.new_link_token();
+
     -- New projects start as drafts; publishing goes through an update.
     new.status := 'draft';
     new.published_at := null;
@@ -173,10 +200,13 @@ begin
     return new;
   end if;
 
-  -- UPDATE. The studio, link token and publish dates are never set directly.
+  -- UPDATE. The studio and publish dates are never set directly. Asking for
+  -- a different link token gets a fresh random one.
   if by_studio then
     new.organization_id := old.organization_id;
-    new.access_token := old.access_token;
+    if new.access_token is distinct from old.access_token then
+      new.access_token := public.new_link_token();
+    end if;
     new.created_at := old.created_at;
     new.created_by := old.created_by;
     new.published_at := old.published_at;
@@ -309,12 +339,56 @@ create trigger project_photos_enforce_rules
   for each row execute function public.enforce_project_photo_rules();
 
 -- ---------------------------------------------------------------------------
+-- Deleted photos stay deleted
+-- ---------------------------------------------------------------------------
+
+-- The uploaders skip these names, so a deleted shot doesn't come back when
+-- the folder is dropped again or the PC app restarts.
+create table public.project_removed_files (
+  project_id  uuid not null references public.projects (id) on delete cascade,
+  file_name   text not null,
+  removed_at  timestamptz not null default now(),
+  primary key (project_id, file_name)
+);
+
+create or replace function public.remember_removed_photo()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- Not when the whole project is going (the cascade would fail).
+  if exists (select 1 from public.projects where id = old.project_id) then
+    insert into public.project_removed_files (project_id, file_name)
+    values (old.project_id, old.file_name)
+    on conflict do nothing;
+  end if;
+  return old;
+end;
+$$;
+
+revoke all on function public.remember_removed_photo() from public, anon, authenticated;
+
+create trigger project_photos_remember_removed
+  after delete on public.project_photos
+  for each row execute function public.remember_removed_photo();
+
+-- ---------------------------------------------------------------------------
 -- Row-level security
 -- ---------------------------------------------------------------------------
 
 alter table public.projects enable row level security;
 alter table public.project_photos enable row level security;
 alter table public.worker_tokens enable row level security;
+alter table public.project_removed_files enable row level security;
+
+create policy "members read removed file names"
+  on public.project_removed_files for select to authenticated
+  using (exists (
+    select 1 from public.projects p
+    where p.id = project_id and (select public.is_org_member(p.organization_id))
+  ));
 
 create policy "members read their projects"
   on public.projects for select to authenticated
@@ -424,8 +498,35 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('project-photos', 'project-photos', false, 15 * 1024 * 1024, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do nothing;
 
--- A file may go into "<studio>/<project>/..." only for a project of that
--- studio that isn't archived, while the studio may start work.
+-- Files a project folder may hold: 2 per allowed photo (web size and
+-- thumbnail) plus slack for uploads in flight. Checked before every browser
+-- upload and before the worker API hands out upload links.
+create or replace function public.project_has_file_room(p_project uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((
+    select (
+      select count(*) from storage.objects so
+      where so.bucket_id = 'project-photos'
+        and so.name like p.organization_id::text || '/' || p.id::text || '/%'
+    ) < 2 * pl.photos_per_event + 50
+    from public.projects p
+    join public.organizations o on o.id = p.organization_id
+    join public.plans pl on pl.id = o.plan_id
+    where p.id = p_project
+  ), false);
+$$;
+
+-- Server code (the worker API, as the service role) keeps EXECUTE.
+revoke all on function public.project_has_file_room(uuid) from public, anon, authenticated;
+
+-- A browser may upload "<studio>/<project>/<uuid>.jpg" or ".thumb.jpg" only,
+-- into a project of the uploader's studio that isn't archived and has room,
+-- while the studio may start work.
 create or replace function public.can_upload_project_photo(p_path text)
 returns boolean
 language sql
@@ -434,17 +535,17 @@ security definer
 set search_path = ''
 as $$
   select case
-    when split_part(p_path, '/', 2) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
-      exists (
-        select 1
+    when p_path ~ '^[0-9a-f-]{36}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.thumb)?\.jpg$' then
+      coalesce((
+        select public.is_org_member(p.organization_id)
+          and public.access_for(o.status, o.trial_ends_at, o.paid_until) in ('ok', 'payment_due')
+          and public.project_has_file_room(p.id)
         from public.projects p
         join public.organizations o on o.id = p.organization_id
         where p.id = split_part(p_path, '/', 2)::uuid
           and p.organization_id = public.storage_path_org(p_path)
           and p.status <> 'archived'
-          and public.is_org_member(p.organization_id)
-          and public.access_for(o.status, o.trial_ends_at, o.paid_until) in ('ok', 'payment_due')
-      )
+      ), false)
     else false
   end;
 $$;

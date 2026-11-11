@@ -39,6 +39,11 @@ const PROJECT_COLUMNS =
 
 /** Signed links to the studio's own photos stay valid this long. */
 const SIGNED_URL_SECONDS = 60 * 60;
+/**
+ * Signed links in the public gallery are shorter-lived, so hiding a photo or
+ * unpublishing takes effect quickly even for a link someone copied.
+ */
+export const PUBLIC_SIGNED_URL_SECONDS = 15 * 60;
 
 /** Photos shown per page, in the dashboard and the public gallery. */
 export const PHOTO_PAGE_SIZE = 60;
@@ -106,14 +111,12 @@ export async function countProjectPhotos(projectId: string, client?: SupabaseCli
   return { total: total.count ?? 0, visible: visible.count ?? 0 };
 }
 
-/** Every file name already in the project, so a re-dropped folder skips them. */
-export async function projectFileNames(projectId: string, client?: SupabaseClient): Promise<string[]> {
-  const supabase = client ?? (await createClient());
+async function allFileNames(supabase: SupabaseClient, table: "project_photos" | "project_removed_files", projectId: string): Promise<string[]> {
   const names: string[] = [];
   // PostgREST caps a response at 1,000 rows by default.
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
-      .from("project_photos")
+      .from(table)
       .select("file_name")
       .eq("project_id", projectId)
       .order("file_name")
@@ -122,6 +125,16 @@ export async function projectFileNames(projectId: string, client?: SupabaseClien
     names.push(...data.map((r) => r.file_name as string));
     if (data.length < 1000) return names;
   }
+}
+
+/**
+ * File names the uploaders should skip: photos already in the project and
+ * photos that were deleted from it (so they don't come back).
+ */
+export async function projectFileNames(projectId: string, client?: SupabaseClient): Promise<string[]> {
+  const supabase = client ?? (await createClient());
+  const [kept, removed] = await Promise.all([allFileNames(supabase, "project_photos", projectId), allFileNames(supabase, "project_removed_files", projectId)]);
+  return [...new Set([...kept, ...removed])];
 }
 
 type PhotoRow = { id: string; file_name: string; path: string; thumb_path: string; width: number; height: number; hidden: boolean };
@@ -134,7 +147,7 @@ export async function projectPhotoPage(
   supabase: SupabaseClient,
   projectId: string,
   offset: number,
-  { visibleOnly = false, limit = PHOTO_PAGE_SIZE }: { visibleOnly?: boolean; limit?: number } = {},
+  { visibleOnly = false, limit = PHOTO_PAGE_SIZE, expiresIn = SIGNED_URL_SECONDS }: { visibleOnly?: boolean; limit?: number; expiresIn?: number } = {},
 ): Promise<{ photos: ProjectPhoto[]; hasMore: boolean }> {
   let query = supabase
     .from("project_photos")
@@ -149,7 +162,7 @@ export async function projectPhotoPage(
 
   const rows = (data ?? []).slice(0, limit);
   const paths = rows.flatMap((p) => [p.thumb_path, p.path]);
-  const signed = paths.length ? await supabase.storage.from(PROJECT_BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS) : { data: [], error: null };
+  const signed = paths.length ? await supabase.storage.from(PROJECT_BUCKET).createSignedUrls(paths, expiresIn) : { data: [], error: null };
   if (signed.error) throw new Error(`Couldn't load photos: ${signed.error.message}`);
   const urlFor = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
 
@@ -206,7 +219,8 @@ export async function recordProjectPhoto(
   const listed = await supabase.storage.from(PROJECT_BUCKET).list(folder, { search: input.photoId });
   const names = new Set((listed.data ?? []).map((f) => f.name));
   if (!names.has(`${input.photoId}.jpg`) || !names.has(`${input.photoId}.thumb.jpg`)) {
-    return { ok: false, error: "Upload didn't finish. Try that photo again.", status: 409 };
+    // 422, not 409: the app should retry this photo, not give up on the project.
+    return { ok: false, error: "Upload didn't finish. Try that photo again.", status: 422 };
   }
 
   const { error } = await supabase.from("project_photos").insert({
@@ -224,9 +238,19 @@ export async function recordProjectPhoto(
   });
   if (!error) return { ok: true };
 
-  // Anything not recorded shouldn't stay in storage.
-  const sameId = error.code === "23505" && /project_photos_pkey/.test(error.message ?? "");
-  if (!sameId) await cleanup.storage.from(PROJECT_BUCKET).remove([paths.full, paths.thumb]);
+  // Same photo id: an earlier attempt was recorded and only its reply was
+  // lost. The files belong to that row, so keep them.
+  if (error.code === "23505" && /project_photos_pkey/.test(error.message ?? "")) return { ok: true, duplicate: true };
+
+  // A definite refusal (same file name already there, a limit, access or a
+  // project rule): the files will never be recorded, so remove them. Any
+  // other error may be temporary; keep the files so a retry can record them.
+  const refusal = REFUSAL_STATUS[error.hint ?? ""];
+  if (error.code === "23505" || refusal) await cleanup.storage.from(PROJECT_BUCKET).remove([paths.full, paths.thumb]);
   if (error.code === "23505") return { ok: true, duplicate: true };
-  return { ok: false, error: friendly(error) ?? "Couldn't save the photo. Try again.", status: error.hint === "plan_limit" || error.hint === "studio_access" ? 403 : 500 };
+  if (refusal) return { ok: false, error: friendly(error) ?? "Couldn't save the photo.", status: refusal };
+  return { ok: false, error: "Couldn't save the photo. Try again.", status: 500 };
 }
+
+/** HTTP status for each kind of database refusal. 403 and 409 tell the PC app to stop. */
+const REFUSAL_STATUS: Record<string, number> = { plan_limit: 403, studio_access: 403, project_rule: 409 };

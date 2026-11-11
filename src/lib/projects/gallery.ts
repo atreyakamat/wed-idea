@@ -3,7 +3,7 @@ import type { StudioStatus } from "@/lib/auth";
 import { isGalleryOpen } from "@/lib/capture/photos";
 import { showBranding } from "@/lib/gallery/queries";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { projectPhotoPage, type ProjectPhoto } from "./queries";
+import { PUBLIC_SIGNED_URL_SECONDS, projectPhotoPage, type ProjectPhoto } from "./queries";
 import { PROJECT_TOKEN_PATTERN } from "./share";
 
 export type PublicPhoto = Pick<ProjectPhoto, "id" | "width" | "height" | "thumbUrl" | "fullUrl"> & { downloadName: string };
@@ -78,7 +78,7 @@ export async function getProjectGallery(token: string, now: Date = new Date()): 
   }
 
   const [page, count] = await Promise.all([
-    projectPhotoPage(supabase, project.id, 0, { visibleOnly: true }),
+    projectPhotoPage(supabase, project.id, 0, { visibleOnly: true, expiresIn: PUBLIC_SIGNED_URL_SECONDS }),
     supabase.from("project_photos").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("hidden", false),
   ]);
 
@@ -100,6 +100,6 @@ export async function getProjectGalleryPage(token: string, offset: number): Prom
   if (!Number.isInteger(offset) || offset < 0 || offset > 100_000) return { photos: [], hasMore: false };
   const found = await findProject(token);
   if (!found || !isGalleryOpen(found.project.gallery_expires_at)) return { photos: [], hasMore: false };
-  const page = await projectPhotoPage(found.supabase, found.project.id, offset, { visibleOnly: true });
+  const page = await projectPhotoPage(found.supabase, found.project.id, offset, { visibleOnly: true, expiresIn: PUBLIC_SIGNED_URL_SECONDS });
   return { photos: toPublic(page.photos), hasMore: page.hasMore };
 }

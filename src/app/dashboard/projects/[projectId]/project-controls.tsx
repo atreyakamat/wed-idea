@@ -5,7 +5,7 @@ import { FormMessage, type FormState } from "@/components/ui/form";
 import { formatIstDate } from "@/lib/events/time";
 import type { ProjectStatus } from "@/lib/projects/queries";
 import { whatsappShareLink } from "@/lib/projects/share";
-import { deleteProject, setProjectStatus } from "../actions";
+import { deleteProject, resetProjectLink, setProjectStatus } from "../actions";
 
 type Share = { url: string; message: string; qrSvg: string; expiresAt: string };
 
@@ -28,6 +28,7 @@ export function ProjectControls({ projectId, status, canManage, visiblePhotos, e
   const [state, setState] = useState<FormState>({ error: null });
   const [pending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const run = (fn: () => Promise<FormState>) =>
     startTransition(async () => {
@@ -70,6 +71,29 @@ export function ProjectControls({ projectId, status, canManage, visiblePhotos, e
             <button type="button" className={secondary} disabled={pending} onClick={() => change("draft")}>
               Stop sharing
             </button>
+          ) : null}
+          {status === "published" && !expired ? (
+            confirmReset ? (
+              <span className="flex flex-wrap items-center gap-2 text-sm">
+                The current link will stop working.
+                <button type="button" className={danger} disabled={pending} onClick={() =>
+                    run(async () => {
+                      const result = await resetProjectLink(projectId);
+                      setConfirmReset(false);
+                      return result;
+                    })
+                  }>
+                  Make new link
+                </button>
+                <button type="button" className={secondary} disabled={pending} onClick={() => setConfirmReset(false)}>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button type="button" className={secondary} disabled={pending} onClick={() => setConfirmReset(true)}>
+                New link
+              </button>
+            )
           ) : null}
           {status !== "archived" && (everShared || expired) ? (
             <button type="button" className={secondary} disabled={pending} onClick={() => change("archived")}>

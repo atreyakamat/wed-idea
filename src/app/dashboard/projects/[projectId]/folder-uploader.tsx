@@ -278,7 +278,7 @@ export function FolderUploader({ projectId, organizationId, existingNames, remai
 
 function SkipNotes({ skipped }: Readonly<{ skipped: Run["skipped"] }>) {
   const notes = [
-    skipped.duplicates ? `${skipped.duplicates} already in this project` : null,
+    skipped.duplicates ? `${skipped.duplicates} already uploaded (or deleted) here` : null,
     skipped.heic ? `${skipped.heic} HEIC photo${skipped.heic === 1 ? "" : "s"} skipped (the PC app handles HEIC)` : null,
     skipped.overLimit ? `${skipped.overLimit} over your plan's photo limit, not uploaded` : null,
     skipped.notPhotos ? `${skipped.notPhotos} non-photo file${skipped.notPhotos === 1 ? "" : "s"} ignored` : null,

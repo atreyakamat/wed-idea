@@ -96,6 +96,20 @@ export async function setProjectStatus(projectId: string, to: ProjectStatus): Pr
   return { error: null, success: STATUS_DONE[to] };
 }
 
+/**
+ * Replaces the gallery link with a new one, so an old link that was shared too
+ * widely stops working. The database makes the new token; the value sent here
+ * only asks for a change.
+ */
+export async function resetProjectLink(projectId: string): Promise<FormState> {
+  const { studio } = await managerProject(projectId);
+  const supabase = await createClient();
+  const { error } = await supabase.from("projects").update({ access_token: "new" }).eq("id", projectId).eq("organization_id", studio.id);
+  if (error) return { error: friendlyDbError(error) ?? "Couldn't make a new link. Try again." };
+  refresh();
+  return { error: null, success: "New link made. The old link no longer works." };
+}
+
 /** Removes every file in a project's folder. Uses the service role, after the caller is checked. */
 async function removeProjectFiles(organizationId: string, projectId: string) {
   const bucket = createAdminClient().storage.from(PROJECT_BUCKET);

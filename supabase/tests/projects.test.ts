@@ -84,6 +84,33 @@ describe("projects", () => {
     expect(p.status).toBe("draft");
   });
 
+  it("ignore a caller's created date, creator and link token", async () => {
+    const [p] = await asOwner<{ created_at: string; created_by: string; access_token: string }>(
+      `insert into public.projects (organization_id, name, slug, created_at, created_by, access_token)
+       values ('${org}', 'Backdated', 'backdated', '2020-01-01', '${OTHER_OWNER}', '${"0".repeat(48)}') returning created_at, created_by, access_token`,
+    );
+    expect(new Date(p.created_at).getFullYear()).toBeGreaterThan(2020);
+    expect(p.created_by).toBe(OWNER);
+    expect(p.access_token).not.toBe("0".repeat(48));
+    expect(p.access_token).toMatch(/^[0-9a-f]{48}$/);
+  });
+
+  it("can't dodge the monthly limit by backdating", async () => {
+    for (const s of ["back-1", "back-2", "back-3", "back-4"]) await newProject(s);
+    const err = await failure(asOwner(`insert into public.projects (organization_id, name, slug, created_at) values ('${org}', 'Old', 'old', '2020-01-01')`));
+    expect(err.hint).toBe("plan_limit");
+  });
+
+  it("get a fresh random link when the studio asks for a new one", async () => {
+    const id = await newProject("new-link");
+    const before = (await sql<{ access_token: string }>(`select access_token from public.projects where id = '${id}'`))[0].access_token;
+    await asOwner(`update public.projects set access_token = '${"1".repeat(48)}' where id = '${id}'`);
+    const after = (await sql<{ access_token: string }>(`select access_token from public.projects where id = '${id}'`))[0].access_token;
+    expect(after).not.toBe(before);
+    expect(after).not.toBe("1".repeat(48));
+    expect(after).toMatch(/^[0-9a-f]{48}$/);
+  });
+
   it("are visible to the studio's members only", async () => {
     await newProject("mine");
     expect(await t.count(OPERATOR, "public.projects")).toBe(1);
@@ -91,14 +118,14 @@ describe("projects", () => {
     expect(await t.count(null, "public.projects", "anon")).toBe(0);
   });
 
-  it("keep their studio, token and dates when a studio edits them", async () => {
+  it("keep their studio and dates when a studio edits them", async () => {
     const id = await newProject("locked");
-    const before = (await sql<{ access_token: string }>(`select access_token from public.projects where id = '${id}'`))[0];
-    await asOwner(`update public.projects set organization_id = '${otherOrg}', access_token = 'abc', name = 'Renamed' where id = '${id}'`);
-    const [after] = await sql<{ organization_id: string; access_token: string; name: string }>(
-      `select organization_id, access_token, name from public.projects where id = '${id}'`,
+    const before = (await sql<{ access_token: string; created_at: string }>(`select access_token, created_at from public.projects where id = '${id}'`))[0];
+    await asOwner(`update public.projects set organization_id = '${otherOrg}', created_at = '2020-01-01', name = 'Renamed' where id = '${id}'`);
+    const [after] = await sql<{ organization_id: string; access_token: string; created_at: string; name: string }>(
+      `select organization_id, access_token, created_at, name from public.projects where id = '${id}'`,
     );
-    expect(after).toEqual({ organization_id: org, access_token: before.access_token, name: "Renamed" });
+    expect(after).toEqual({ organization_id: org, access_token: before.access_token, created_at: before.created_at, name: "Renamed" });
   });
 
   it("count toward the plan's monthly limit, in India time", async () => {
@@ -193,6 +220,20 @@ describe("project photos", () => {
     await asOperator(`update public.project_photos set hidden = true`);
     expect((await sql<{ hidden: boolean }>(`select hidden from public.project_photos`))[0].hidden).toBe(true);
     expect((await failure(asOwner(`update public.project_photos set path = 'elsewhere.jpg'`))).message).toMatch(/visibility/);
+  });
+
+  it("remember deleted file names, so they aren't uploaded again", async () => {
+    const id = await newProject("removed");
+    await asOwner(photoSql(id, "IMG_0009"));
+    await asOwner(`delete from public.project_photos where file_name = 'IMG_0009'`);
+    expect(await asOperator<{ file_name: string }>(`select file_name from public.project_removed_files`)).toEqual([{ file_name: "IMG_0009" }]);
+    expect(await asOther(`select file_name from public.project_removed_files`)).toEqual([]);
+    expect((await failure(asOwner(`insert into public.project_removed_files (project_id, file_name) values ('${id}', 'x')`))).message).toMatch(/row-level security/);
+    // Deleting a draft project with photos takes its list with it.
+    const other = await newProject("removed-2");
+    await asOwner(photoSql(other, "y"));
+    await asOwner(`delete from public.projects where id = '${other}'`);
+    expect((await sql<{ n: number }>(`select count(*)::int as n from public.project_removed_files where project_id = '${other}'`))[0].n).toBe(0);
   });
 
   it("are deleted by managers, not operators", async () => {
@@ -304,26 +345,56 @@ describe("worker tokens", () => {
 describe("project storage", () => {
   const upload = (as: typeof asOwner, path: string) =>
     as(`insert into storage.objects (bucket_id, name) values ('project-photos', '${path}') returning id`);
+  let n = 0;
+  /** A fresh "<uuid>.jpg" name. */
+  const file = (suffix = ".jpg") => `${(++n).toString(16).padStart(8, "0")}-0000-4000-8000-000000000000${suffix}`;
 
   it("accepts files only inside a live project of the uploader's studio", async () => {
     const id = await newProject("store");
-    await upload(asOperator, `${org}/${id}/a.jpg`);
-    expect((await failure(upload(asOther, `${org}/${id}/b.jpg`))).message).toMatch(/row-level security/);
-    expect((await failure(upload(asOwner, `${org}/not-a-uuid/b.jpg`))).message).toMatch(/row-level security/);
+    await upload(asOperator, `${org}/${id}/${file()}`);
+    await upload(asOperator, `${org}/${id}/${file(".thumb.jpg")}`);
+    expect((await failure(upload(asOther, `${org}/${id}/${file()}`))).message).toMatch(/row-level security/);
+    expect((await failure(upload(asOwner, `${org}/not-a-uuid/${file()}`))).message).toMatch(/row-level security/);
     await asOwner(`update public.projects set status = 'archived' where id = '${id}'`);
-    expect((await failure(upload(asOwner, `${org}/${id}/c.jpg`))).message).toMatch(/row-level security/);
+    expect((await failure(upload(asOwner, `${org}/${id}/${file()}`))).message).toMatch(/row-level security/);
+  });
+
+  it("accepts only photo file names", async () => {
+    const id = await newProject("store-names");
+    for (const bad of ["junk/1.bin", "a.jpg", `${file(".png")}`, `sub/${file()}`, `${file()}.exe`]) {
+      expect((await failure(upload(asOwner, `${org}/${id}/${bad}`))).message).toMatch(/row-level security/);
+    }
+  });
+
+  it("caps a folder at two files per allowed photo, plus slack", async () => {
+    await t.db.exec(`update public.plans set photos_per_event = 1 where id = 'starter'`);
+    try {
+      const id = await newProject("store-cap");
+      await t.db.exec(`insert into storage.objects (bucket_id, name) select 'project-photos', '${org}/${id}/' || gen_random_uuid() || '.jpg' from generate_series(1, 51)`);
+      await upload(asOwner, `${org}/${id}/${file()}`); // 52nd of 2 × 1 + 50
+      expect((await failure(upload(asOwner, `${org}/${id}/${file()}`))).message).toMatch(/row-level security/);
+      expect((await sql<{ room: boolean }>(`select public.project_has_file_room('${id}') as room`))[0].room).toBe(false);
+    } finally {
+      await t.db.exec(`update public.plans set photos_per_event = 1500 where id = 'starter'`);
+    }
+  });
+
+  it("keeps the room check for server code only", async () => {
+    const id = await newProject("store-room");
+    expect((await failure(asOwner(`select public.project_has_file_room('${id}')`))).message).toMatch(/permission denied/);
   });
 
   it("refuses uploads once access has run out", async () => {
     const id = await newProject("store-late");
     await setOrg(`status = 'suspended', suspended_at = now()`);
-    expect((await failure(upload(asOwner, `${org}/${id}/a.jpg`))).message).toMatch(/row-level security/);
+    expect((await failure(upload(asOwner, `${org}/${id}/${file()}`))).message).toMatch(/row-level security/);
   });
 
   it("lets only the studio's members read the files", async () => {
     const id = await newProject("store-read");
-    await upload(asOwner, `${org}/${id}/r.jpg`);
-    const read = (uid: string) => t.as<{ n: number }>("authenticated", uid, `select count(*)::int as n from storage.objects where bucket_id = 'project-photos' and name like '%/r.jpg'`);
+    const name = file();
+    await upload(asOwner, `${org}/${id}/${name}`);
+    const read = (uid: string) => t.as<{ n: number }>("authenticated", uid, `select count(*)::int as n from storage.objects where bucket_id = 'project-photos' and name like '%/${name}'`);
     expect((await read(OPERATOR))[0].n).toBe(1);
     expect((await read(OTHER_OWNER))[0].n).toBe(0);
   });

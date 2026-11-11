@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { DashboardNav } from "@/components/dashboard/dashboard-nav";
 import { StudioBanner } from "@/components/dashboard/studio-banner";
 import { requireStudio } from "@/lib/auth";
 import { studioNotice } from "@/lib/studio/status";
@@ -27,6 +28,9 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           <Suspense fallback={<div className="h-9 w-24" aria-hidden />}>
             <Account />
           </Suspense>
+        </div>
+        <div className="mx-auto max-w-6xl px-4 pb-3 sm:px-6">
+          <DashboardNav />
         </div>
       </header>
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">

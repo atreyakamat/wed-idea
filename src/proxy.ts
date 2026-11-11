@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { GUEST_TOKEN_PATTERN } from "@/lib/capture/share";
+import { PROJECT_TOKEN_PATTERN } from "@/lib/projects/share";
 import { updateSession } from "@/lib/supabase/proxy-session";
 
 /**
  * Runs before matching routes render.
  *
- * - /g/<token>: malformed gallery links get a real 404 before any page work.
+ * - /g/<token> and /p/<token>: malformed gallery links get a real 404 before
+ *   any page work.
  * - /dashboard, /onboarding and /admin: refreshes the Supabase session and sends
  *   signed-out visitors to the login page. This is only a fast first gate;
  *   every page and Server Action checks the user and their studio role itself
@@ -17,9 +19,10 @@ import { updateSession } from "@/lib/supabase/proxy-session";
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  if (pathname.startsWith("/g/")) {
+  if (pathname.startsWith("/g/") || pathname.startsWith("/p/")) {
     const token = pathname.slice(3);
-    if (!GUEST_TOKEN_PATTERN.test(token)) {
+    const pattern = pathname.startsWith("/g/") ? GUEST_TOKEN_PATTERN : PROJECT_TOKEN_PATTERN;
+    if (!pattern.test(token)) {
       return new NextResponse("Not found", { status: 404, headers: { "X-Robots-Tag": "noindex" } });
     }
     return NextResponse.next();
@@ -47,5 +50,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/onboarding", "/admin/:path*", "/g/:path*"],
+  matcher: ["/dashboard/:path*", "/onboarding", "/admin/:path*", "/g/:path*", "/p/:path*"],
 };

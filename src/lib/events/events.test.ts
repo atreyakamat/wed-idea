@@ -65,6 +65,13 @@ describe("event details form", () => {
     expect(result.ok && galleryDays(result.data.ends_at, result.data.gallery_expires_at)).toBe(14);
   });
 
+  it("caps an event at 7 days, like the database", () => {
+    const ok = parseEventDetails(form({ ...validDetails, ends_at: "2026-12-19T09:00" }));
+    expect(ok.ok).toBe(true);
+    const tooLong = parseEventDetails(form({ ...validDetails, ends_at: "2026-12-19T09:01" }));
+    expect(!tooLong.ok && tooLong.fieldErrors.ends_at).toBe("An event can last up to 7 days");
+  });
+
   it("turns empty optional fields into null", () => {
     const result = parseEventDetails(form({ ...validDetails, venue: "", backdrop_brief: "" }));
     expect(result.ok && result.data.venue).toBeNull();
@@ -126,6 +133,13 @@ describe("event status", () => {
     expect(checkTransition("closed", "archived", true).allowed).toBe(true);
     expect(checkTransition("draft", "closed", true).allowed).toBe(false);
     expect(checkTransition("live", "draft", true).allowed).toBe(false);
+  });
+
+  it("goes live from a day before the event", () => {
+    const now = new Date("2026-12-10T10:00:00+05:30");
+    expect(checkTransition("draft", "live", true, "2026-12-12T09:00:00+05:30", now).allowed).toBe(false);
+    expect(checkTransition("draft", "live", true, "2026-12-11T09:00:00+05:30", now).allowed).toBe(true);
+    expect(checkTransition("closed", "live", true, "2026-12-01T09:00:00+05:30", now).allowed).toBe(true);
   });
 
   it("allows unlocking the design only in draft", () => {

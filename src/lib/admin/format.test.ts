@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeAudit, formatBytes, formatCount, isStudioStatus } from "./format";
+import { auditSubject, describeAudit, formatBytes, formatCount, isStudioStatus } from "./format";
 
 describe("formatBytes", () => {
   it.each([
@@ -42,7 +42,35 @@ describe("describeAudit", () => {
     expect(describeAudit("studio.trial_extended", { days: 1 })).toBe("Extended the trial by 1 day");
   });
 
+  it("describes plan changes and payments", () => {
+    expect(describeAudit("studio.plan_changed", { from: "trial", to: "starter" })).toBe("Changed plan from Trial to Starter");
+    expect(
+      describeAudit("studio.payment_recorded", { plan: "pro", amount_paise: 399900, method: "upi", reference: "UPI-1", months: 3 }),
+    ).toBe("Recorded ₹3,999 by UPI (UPI-1) for Pro, 3 months");
+    expect(describeAudit("studio.payment_recorded", { plan: "starter", amount_paise: 149900, method: "cash", months: 1 })).toBe(
+      "Recorded ₹1,499 by Cash for Starter, 1 month",
+    );
+  });
+
+  it("lists what changed on a plan", () => {
+    expect(
+      describeAudit("plan.updated", {
+        plan: "starter",
+        before: { name: "Starter", price_paise: 149900, team_seats: 3, remove_branding: false },
+        after: { name: "Starter", price_paise: 159900, team_seats: 4, remove_branding: false },
+      }),
+    ).toBe("Edited the Starter plan: price ₹1,499 → ₹1,599, seats 3 → 4");
+  });
+
   it("falls back to the raw action", () => {
     expect(describeAudit("studio.renamed", {})).toBe("studio.renamed");
+  });
+});
+
+describe("auditSubject", () => {
+  it("names the studio, or the platform for plan edits", () => {
+    expect(auditSubject({ organization_id: "x", studio_name: "Saltwater" })).toBe("Saltwater");
+    expect(auditSubject({ organization_id: null, studio_name: null })).toBe("Platform");
+    expect(auditSubject({ organization_id: "x", studio_name: null })).toBe("Deleted studio");
   });
 });

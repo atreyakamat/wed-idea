@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { describeAudit } from "@/lib/admin/format";
+import { auditSubject, describeAudit } from "@/lib/admin/format";
 import { listAudit } from "@/lib/admin/queries";
 import { formatIstDateTime } from "@/lib/events/time";
 
@@ -45,7 +45,7 @@ async function AuditList() {
                     {a.studio_name}
                   </Link>
                 ) : (
-                  <span className="text-muted">Deleted studio</span>
+                  <span className="text-muted">{auditSubject(a)}</span>
                 )}
               </td>
               <td className="px-4 py-3">{describeAudit(a.action, a.details)}</td>

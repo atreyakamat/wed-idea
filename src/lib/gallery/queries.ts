@@ -1,7 +1,9 @@
 import "server-only";
 import { GUEST_TOKEN_PATTERN } from "@/lib/capture/share";
 import { isGalleryOpen } from "@/lib/capture/photos";
+import type { StudioStatus } from "@/lib/auth";
 import type { EventStatus } from "@/lib/events/status";
+import { accessFor, canStartWork } from "@/lib/studio/status";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /** How long signed photo links in the gallery stay valid. */
@@ -31,6 +33,8 @@ export type GuestGallery =
       expiresAt: string;
       theme: unknown;
       photos: GalleryPhoto[];
+      /** False on plans that remove the Cute Wedding Polaroid credit. */
+      showBranding: boolean;
     };
 
 type GuestWithEvent = {
@@ -43,8 +47,20 @@ type GuestWithEvent = {
     gallery_expires_at: string;
     status: EventStatus;
     theme: unknown;
+    organizations: {
+      status: StudioStatus;
+      trial_ends_at: string;
+      paid_until: string | null;
+      plans: { remove_branding: boolean } | null;
+    } | null;
   } | null;
 };
+
+/** The credit comes off only for a plan that removes it, and only while it's paid up. */
+function showBranding(org: { status: StudioStatus; trial_ends_at: string; paid_until: string | null; plans: { remove_branding: boolean } | null } | null): boolean {
+  if (!org?.plans?.remove_branding) return true;
+  return !canStartWork(accessFor({ status: org.status, trialEndsAt: org.trial_ends_at, paidUntil: org.paid_until }));
+}
 
 /**
  * Looks a guest up by the secret token in their link. Guests aren't signed
@@ -57,7 +73,7 @@ export async function getGuestGallery(token: string, now: Date = new Date()): Pr
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("guests")
-    .select("id, name, events (couple_names, venue, starts_at, gallery_expires_at, status, theme)")
+    .select("id, name, events (couple_names, venue, starts_at, gallery_expires_at, status, theme, organizations (status, trial_ends_at, paid_until, plans (remove_branding)))")
     .eq("access_token", token)
     .maybeSingle<GuestWithEvent>();
   if (error) throw new Error(`Couldn't load the gallery: ${error.message}`);
@@ -98,6 +114,7 @@ export async function getGuestGallery(token: string, now: Date = new Date()): Pr
     venue: event.venue,
     startsAt: event.starts_at,
     expiresAt: event.gallery_expires_at,
+    showBranding: showBranding(event.organizations),
     theme: event.theme,
     photos: galleryPhotos,
   };

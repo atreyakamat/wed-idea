@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Filters } from "@/components/admin/filters";
+import { AccessBadge } from "@/components/admin/access-badge";
 import { StudioStatusBadge } from "@/components/admin/studio-status-badge";
 import { formatBytes, formatCount, isStudioStatus } from "@/lib/admin/format";
 import { listStudios } from "@/lib/admin/queries";
@@ -12,6 +13,7 @@ export const metadata: Metadata = { title: "Studios" };
 
 const STATUS_OPTIONS = [
   { value: null, label: "All" },
+  { value: "attention", label: "Need attention" },
   ...(["trialing", "active", "past_due", "suspended"] as const).map((s) => ({ value: s, label: STUDIO_STATUS_LABELS[s] })),
 ];
 
@@ -28,12 +30,13 @@ export default function StudiosPage({ searchParams }: PageProps<"/admin/studios"
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-function planNote(s: { status: string; trial_ends_at: string; suspended_at: string | null }) {
+function planNote(s: { status: string; trial_ends_at: string; suspended_at: string | null; paid_until: string | null }) {
   if (s.status === "trialing") {
     const days = daysLeft(s.trial_ends_at);
-    return days ? `Trial ends in ${days} day${days === 1 ? "" : "s"}` : "Trial ended";
+    return days ? `ends in ${days} day${days === 1 ? "" : "s"}` : null;
   }
-  if (s.status === "suspended" && s.suspended_at) return `Since ${formatIstDate(s.suspended_at)}`;
+  if (s.status === "suspended" && s.suspended_at) return `suspended ${formatIstDate(s.suspended_at)}`;
+  if (s.paid_until) return `paid until ${formatIstDate(s.paid_until)}`;
   return null;
 }
 
@@ -41,12 +44,15 @@ async function StudioList({ searchParams }: Readonly<{ searchParams: PageProps<"
   const params = await searchParams;
   const query = (first(params.q) ?? "").trim().slice(0, 100);
   const rawStatus = first(params.status);
+  const attention = rawStatus === "attention";
   const status = isStudioStatus(rawStatus) ? rawStatus : null;
-  const studios = await listStudios({ query, status: status ?? undefined });
+  const all = await listStudios({ query, status: status ?? undefined });
+  // Need attention: anything not in good standing, whatever its stored status.
+  const studios = attention ? all.filter((s) => s.access !== "ok") : all;
 
   return (
     <div className="mt-8 flex flex-col gap-5">
-      <Filters path="/admin/studios" query={query} status={status} options={STATUS_OPTIONS} placeholder="Name, link or owner email" />
+      <Filters path="/admin/studios" query={query} status={attention ? "attention" : status} options={STATUS_OPTIONS} placeholder="Name, link or owner email" />
 
       {studios.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-line px-6 py-12 text-center text-muted">No studios match.</p>
@@ -74,8 +80,14 @@ async function StudioList({ searchParams }: Readonly<{ searchParams: PageProps<"
                     <p className="text-xs text-muted">{s.owner_email ?? "No owner"}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <StudioStatusBadge status={s.status} />
-                    {planNote(s) ? <p className="mt-1 text-xs text-muted">{planNote(s)}</p> : null}
+                    <span className="flex flex-wrap gap-1.5">
+                      <StudioStatusBadge status={s.status} />
+                      <AccessBadge access={s.access} />
+                    </span>
+                    <p className="mt-1 text-xs text-muted">
+                      {s.plan_name}
+                      {planNote(s) ? ` · ${planNote(s)}` : ""}
+                    </p>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {formatCount(s.event_count)}

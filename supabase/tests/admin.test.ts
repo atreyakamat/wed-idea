@@ -148,6 +148,8 @@ describe("suspending a studio", () => {
   });
 
   it("reactivates and clears the suspension", async () => {
+    await expect(asAdmin(`select public.admin_set_studio_status('${orgA}', 'active')`)).rejects.toThrow(/paid plan/i);
+    await asAdmin(`select public.admin_set_plan('${orgA}', 'starter')`);
     await asAdmin(`select public.admin_set_studio_status('${orgA}', 'active')`);
     const s = await studio(orgA);
     expect(s).toMatchObject({ status: "active", suspended_at: null, suspended_reason: null });
@@ -305,6 +307,7 @@ describe("suspension has no back doors", () => {
 
   beforeAll(async () => {
     await asAdmin(`select public.admin_set_studio_status('${orgA}', 'active')`);
+    await t.db.exec(`update public.events set status = 'live' where id = '${eventA}'`);
     guestId = (
       await t.as<{ id: string }>(
         "authenticated",

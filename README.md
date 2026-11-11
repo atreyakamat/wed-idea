@@ -34,10 +34,10 @@ src/
     (auth)/            /login, /signup, sign-in and sign-up actions
     auth/callback/     email confirmation link handler
     onboarding/        create your studio
-    dashboard/         events list, new event, event page (design, prints, details, status), capture screen
+    dashboard/         events list, new event, event page (design, prints, details, status), capture screen, plan & billing
     g/[token]/         a guest's private gallery
     templates/         public template gallery and A4 print sheet preview
-    admin/             platform admin: two-step sign-in, overview, studios, events, audit log
+    admin/             platform admin: two-step sign-in, overview, studios, events, plans, audit log
   components/
     admin/             stat tiles, status badge, filters, sign-up chart
     dashboard/         event forms, design editor, status controls, account banner
@@ -46,7 +46,7 @@ src/
   lib/
     auth.ts            requireUser / requireStudio / requireStudioManager
     admin/             requireAdmin, admin queries, formatting
-    studio/            studio status, trial countdown and banner text
+    studio/            plan access rules, banners, billing data, India-time months
     capture/           photo processing, storage paths, WhatsApp message and link
     gallery/           guest gallery lookup (by secret token) and polaroid PNG export
     events/            event form parsing (IST), status rules, design defaults, queries
@@ -79,11 +79,12 @@ supabase/
 
 - **Overview:** studios by status, trials ending this week, live events, guests, photos, storage and sign-ups per week.
 - **Studios:** search by name, link or owner email; open a studio to see its team, events, usage and history.
-- **Actions:** suspend (a reason is required and shown to the studio), reactivate, mark as payment due, or extend a trial by 7, 14 or 30 days.
+- **Actions:** suspend (a reason is required and shown to the studio), reactivate, mark as payment due, extend a trial by 7, 14 or 30 days, record a payment or change plan.
+- **Plans:** edit prices and limits (see [Plans and billing](#plans-and-billing)).
 - **Events:** every studio's weddings, read-only, for support.
 - **Audit log:** every admin change with who, when and why. Nobody can edit or delete entries.
 
-**Studio status.** New studios start on a 14-day trial, one studio per account. A suspended studio can't create events, go live, capture, upload, move events to another studio or open a new studio, but its guests can still open their galleries. Trials ending doesn't block anything yet; plans and limits come next.
+**Studio status.** New studios start on a 14-day trial, one studio per account. A suspended studio can't create events, go live, capture, upload, move events to another studio or open a new studio, but its guests can still open their galleries.
 
 **Security.**
 - Admin powers need two-step sign-in. The database's `is_admin()` is true only for an `admin_users` row **and** a session whose second step (`aal2`) used that admin's registered authenticator. A stolen password alone gets nothing.
@@ -110,6 +111,33 @@ update public.admin_users
 set mfa_factor_id = null, mfa_setup_until = now() + interval '1 hour'
 where user_id = (select id from auth.users where email = 'you@example.com');
 ```
+
+## Plans and billing
+
+Plans are data: edit prices and limits at `/admin/plans`. Every edit is in the audit log. Starting values:
+
+| | Trial (14 days) | Starter | Pro |
+|---|---|---|---|
+| Price per month | Free | ₹1,499 | ₹3,999 |
+| Events per month | 1 | 4 | 15 |
+| Photos per event | 300 | 1,500 | 5,000 |
+| Team seats | 2 | 3 | 10 |
+| Gallery days | 7 | 7 | 30 |
+| Credit on guest galleries | Yes | Yes | No |
+
+**Limits are enforced in the database.** Events count toward the month they take place in, in India time. Events that have been live can be archived but not deleted, so a month's count can't be reset. Lowering a limit never removes anything; it only stops new events, photos or seats beyond it. Studios see plain messages like "You've used 4 of 4 events for December 2026 on the Starter plan. Upgrade to Pro for 15."
+
+**When access runs out:**
+- Trial ended, or payment more than 7 days late: no new events and no going live. An event that's already live keeps capturing until 12 hours after it ends, and never more than 3 days after access ran out.
+- 1 to 7 days late: everything still works, with a "Payment due" banner.
+- Suspended (by an admin): nothing new at all.
+
+**Getting paid (manual for now):**
+1. A studio owner chooses a plan on `/dashboard/billing`. It shows up under **Upgrade requests** on the admin overview.
+2. They pay you by UPI or bank transfer.
+3. Click **Record payment**: pick the plan and months; the amount fills in. The studio moves to that plan and the request closes. Paying early for the same plan extends from the end of the current period; a different plan starts today (settle unused time by hand).
+
+**Change plan** on a studio's page moves it without a payment (complimentary, or a downgrade). Payment records are kept even if a studio is deleted. Razorpay can add the same payment rows later; the `(method, reference)` pair is unique, so a webhook can't record one payment twice.
 
 ## Local development
 

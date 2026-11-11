@@ -3,7 +3,9 @@
     python tools/train_lighting.py                      # the free sample set
     python tools/train_lighting.py --labels my.json     # add your own photos
 
-The labels file is a JSON list of {"id", "lighting", "download" or "path"}.
+The labels file is a JSON list of {"id", "lighting"} plus either "path" (a
+photo on disk) or a free sample's "source" ("pexels" or "picsum") and numeric
+"photo" id (picsum also takes "width" and "height").
 Downloads are cached outside the repo (~/.cache/cwp-worker/samples). The
 script prints how well the model does on photos it wasn't trained on
 (leave-one-out), then rewrites src/cwp_worker/looks/lighting_model.py.
@@ -16,9 +18,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
 
 import numpy as np
 import requests
@@ -34,37 +36,30 @@ CACHE = Path.home() / ".cache" / "cwp-worker" / "samples"
 MODEL_FILE = ROOT / "src" / "cwp_worker" / "looks" / "lighting_model.py"
 FAMILY = {"daylight": "bright", "golden": "warm", "indoor": "warm", "stage": "dark", "night": "dark"}
 
-# Downloads are only ever made over HTTPS from these photo hosts, redirects
-# included, whatever a labels file says. Use "path" for photos on disk.
-ALLOWED_HOSTS = {"images.pexels.com", "picsum.photos", "fastly.picsum.photos", "images.unsplash.com"}
-MAX_REDIRECTS = 3
-
-
-def _check_url(url: str) -> str:
-    parts = urlparse(url)
-    if parts.scheme != "https" or parts.hostname not in ALLOWED_HOSTS:
-        raise ValueError(f"Not downloading {url!r}: only https from {', '.join(sorted(ALLOWED_HOSTS))}")
-    return url
-
-
-def download(url: str, session: requests.Session) -> bytes:
-    for _ in range(MAX_REDIRECTS + 1):
-        r = session.get(_check_url(url), timeout=60, allow_redirects=False)
-        if r.is_redirect:
-            url = urljoin(url, r.headers["location"])
-            continue
-        r.raise_for_status()
-        return r.content
-    raise ValueError(f"Too many redirects for {url!r}")
+# Sample photos are named by source and numeric id; the download address is
+# built here, never read from the labels file. Use "path" for photos on disk.
+def sample_url(entry: dict) -> str:
+    photo = int(entry["photo"])
+    if entry["source"] == "pexels":
+        return f"https://images.pexels.com/photos/{photo}/pexels-photo-{photo}.jpeg?auto=compress&w=1280"
+    if entry["source"] == "picsum":
+        width, height = int(entry["width"]), int(entry["height"])
+        if not (0 < width <= 4000 and 0 < height <= 4000):
+            raise ValueError(f"Bad size for {entry['id']}")
+        return f"https://picsum.photos/id/{photo}/{width}/{height}"
+    raise ValueError(f"Unknown source {entry['source']!r} for {entry['id']}")
 
 
 def load(entry: dict, session: requests.Session) -> Image.Image:
     if "path" in entry:
         return Image.open(entry["path"])
-    target = CACHE / f"{Path(str(entry['id'])).name}.jpg"
+    name = re.sub(r"[^a-z0-9-]", "", str(entry["id"]).lower())
+    target = CACHE / f"{name}.jpg"
     if not target.exists():
         CACHE.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(download(entry["download"], session))
+        r = session.get(sample_url(entry), timeout=60)
+        r.raise_for_status()
+        target.write_bytes(r.content)
     return Image.open(target)
 
 

@@ -18,6 +18,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import numpy as np
 import requests
@@ -33,16 +34,37 @@ CACHE = Path.home() / ".cache" / "cwp-worker" / "samples"
 MODEL_FILE = ROOT / "src" / "cwp_worker" / "looks" / "lighting_model.py"
 FAMILY = {"daylight": "bright", "golden": "warm", "indoor": "warm", "stage": "dark", "night": "dark"}
 
+# Downloads are only ever made over HTTPS from these photo hosts, redirects
+# included, whatever a labels file says. Use "path" for photos on disk.
+ALLOWED_HOSTS = {"images.pexels.com", "picsum.photos", "fastly.picsum.photos", "images.unsplash.com"}
+MAX_REDIRECTS = 3
+
+
+def _check_url(url: str) -> str:
+    parts = urlparse(url)
+    if parts.scheme != "https" or parts.hostname not in ALLOWED_HOSTS:
+        raise ValueError(f"Not downloading {url!r}: only https from {', '.join(sorted(ALLOWED_HOSTS))}")
+    return url
+
+
+def download(url: str, session: requests.Session) -> bytes:
+    for _ in range(MAX_REDIRECTS + 1):
+        r = session.get(_check_url(url), timeout=60, allow_redirects=False)
+        if r.is_redirect:
+            url = urljoin(url, r.headers["location"])
+            continue
+        r.raise_for_status()
+        return r.content
+    raise ValueError(f"Too many redirects for {url!r}")
+
 
 def load(entry: dict, session: requests.Session) -> Image.Image:
     if "path" in entry:
         return Image.open(entry["path"])
-    target = CACHE / f"{entry['id']}.jpg"
+    target = CACHE / f"{Path(str(entry['id'])).name}.jpg"
     if not target.exists():
         CACHE.mkdir(parents=True, exist_ok=True)
-        r = session.get(entry["download"], timeout=60)
-        r.raise_for_status()
-        target.write_bytes(r.content)
+        target.write_bytes(download(entry["download"], session))
     return Image.open(target)
 
 

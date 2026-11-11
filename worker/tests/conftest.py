@@ -38,14 +38,15 @@ class FakeApi:
     def file_names(self, project_id: str) -> set[str]:
         return set(self.existing)
 
-    def reserve(self, project_id: str) -> Reservation:
+    def reserve(self, project_id: str, edited: bool = False) -> Reservation:
         if self.fail_reserve:
             raise self.fail_reserve
         if self.limit is not None and len(self.confirmed) >= self.limit:
             raise ApiError("This project has reached 2 photos, the most the Trial plan allows.", 403)
         self.reserved += 1
         n = self.reserved
-        return Reservation(f"00000000-0000-4000-8000-{n:012d}", f"https://up/full/{n}", f"https://up/thumb/{n}")
+        extra = (f"https://up/edit/{n}", f"https://up/edit-thumb/{n}") if edited else (None, None)
+        return Reservation(f"00000000-0000-4000-8000-{n:012d}", f"https://up/full/{n}", f"https://up/thumb/{n}", *extra)
 
     def put(self, url: str, data: bytes) -> None:
         self.puts.append((url, data))

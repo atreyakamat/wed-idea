@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { UUID_PATTERN } from "@/lib/capture/photos";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectKind } from "./form";
-import { PROJECT_BUCKET, projectPhotoPaths } from "./paths";
+import { LIGHTING_GROUPS, LOOK_ID_PATTERN, PROJECT_BUCKET, projectPhotoPaths, type LightingGroup } from "./paths";
 
 export type ProjectStatus = "draft" | "published" | "archived";
 
@@ -30,8 +30,13 @@ export type ProjectPhoto = {
   width: number;
   height: number;
   hidden: boolean;
+  /** The edited version when there is one, otherwise the plain photo. */
   thumbUrl: string;
   fullUrl: string;
+  /** The plain photo, when an edited version is shown. */
+  originalUrl: string | null;
+  lighting: LightingGroup | null;
+  look: string | null;
 };
 
 const PROJECT_COLUMNS =
@@ -137,7 +142,19 @@ export async function projectFileNames(projectId: string, client?: SupabaseClien
   return [...new Set([...kept, ...removed])];
 }
 
-type PhotoRow = { id: string; file_name: string; path: string; thumb_path: string; width: number; height: number; hidden: boolean };
+type PhotoRow = {
+  id: string;
+  file_name: string;
+  path: string;
+  thumb_path: string;
+  edited_path: string | null;
+  edited_thumb_path: string | null;
+  lighting: LightingGroup | null;
+  look: string | null;
+  width: number;
+  height: number;
+  hidden: boolean;
+};
 
 /**
  * One page of a project's photos in shooting order (time taken, then file
@@ -151,7 +168,7 @@ export async function projectPhotoPage(
 ): Promise<{ photos: ProjectPhoto[]; hasMore: boolean }> {
   let query = supabase
     .from("project_photos")
-    .select("id, file_name, path, thumb_path, width, height, hidden")
+    .select("id, file_name, path, thumb_path, edited_path, edited_thumb_path, lighting, look, width, height, hidden")
     .eq("project_id", projectId)
     .order("taken_at", { ascending: true, nullsFirst: false })
     .order("file_name", { ascending: true })
@@ -161,15 +178,17 @@ export async function projectPhotoPage(
   if (error) throw new Error(`Couldn't load photos: ${error.message}`);
 
   const rows = (data ?? []).slice(0, limit);
-  const paths = rows.flatMap((p) => [p.thumb_path, p.path]);
+  const paths = rows.flatMap((p) => [p.edited_thumb_path ?? p.thumb_path, p.edited_path ?? p.path, ...(p.edited_path ? [p.path] : [])]);
   const signed = paths.length ? await supabase.storage.from(PROJECT_BUCKET).createSignedUrls(paths, expiresIn) : { data: [], error: null };
   if (signed.error) throw new Error(`Couldn't load photos: ${signed.error.message}`);
   const urlFor = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
 
   const photos = rows.flatMap((p) => {
-    const thumbUrl = urlFor.get(p.thumb_path);
-    const fullUrl = urlFor.get(p.path);
-    return thumbUrl && fullUrl ? [{ id: p.id, fileName: p.file_name, width: p.width, height: p.height, hidden: p.hidden, thumbUrl, fullUrl }] : [];
+    const thumbUrl = urlFor.get(p.edited_thumb_path ?? p.thumb_path);
+    const fullUrl = urlFor.get(p.edited_path ?? p.path);
+    const originalUrl = p.edited_path ? (urlFor.get(p.path) ?? null) : null;
+    if (!thumbUrl || !fullUrl) return [];
+    return [{ id: p.id, fileName: p.file_name, width: p.width, height: p.height, hidden: p.hidden, thumbUrl, fullUrl, originalUrl, lighting: p.lighting, look: p.look }];
   });
   return { photos, hasMore: (data?.length ?? 0) > limit };
 }
@@ -181,6 +200,8 @@ export type NewProjectPhoto = {
   height: number;
   bytes: number | null;
   takenAt: string | null;
+  /** Set when the PC app also uploaded an auto-edited version. */
+  edit?: { lighting: LightingGroup; look: string } | null;
 };
 
 export type RecordResult = { ok: true; duplicate?: boolean } | { ok: false; error: string; status?: number };
@@ -194,6 +215,10 @@ export function validateNewPhoto(input: NewProjectPhoto): string | null {
   }
   if (input.bytes !== null && (!Number.isInteger(input.bytes) || input.bytes < 0)) return "Invalid file size.";
   if (input.takenAt !== null && Number.isNaN(Date.parse(input.takenAt))) return "Invalid capture time.";
+  if (input.edit) {
+    if (!(LIGHTING_GROUPS as readonly string[]).includes(input.edit.lighting)) return "Unknown lighting.";
+    if (typeof input.edit.look !== "string" || !LOOK_ID_PATTERN.test(input.edit.look) || input.edit.look.length > 40) return "Unknown look.";
+  }
   return null;
 }
 
@@ -218,7 +243,8 @@ export async function recordProjectPhoto(
   const folder = paths.full.slice(0, paths.full.lastIndexOf("/"));
   const listed = await supabase.storage.from(PROJECT_BUCKET).list(folder, { search: input.photoId });
   const names = new Set((listed.data ?? []).map((f) => f.name));
-  if (!names.has(`${input.photoId}.jpg`) || !names.has(`${input.photoId}.thumb.jpg`)) {
+  const expected = [`${input.photoId}.jpg`, `${input.photoId}.thumb.jpg`, ...(input.edit ? [`${input.photoId}.edit.jpg`, `${input.photoId}.edit.thumb.jpg`] : [])];
+  if (!expected.every((n) => names.has(n))) {
     // 422, not 409: the app should retry this photo, not give up on the project.
     return { ok: false, error: "Upload didn't finish. Try that photo again.", status: 422 };
   }
@@ -235,6 +261,7 @@ export async function recordProjectPhoto(
     bytes: input.bytes,
     taken_at: input.takenAt,
     source,
+    ...(input.edit ? { edited_path: paths.editedFull, edited_thumb_path: paths.editedThumb, lighting: input.edit.lighting, look: input.edit.look } : {}),
   });
   if (!error) return { ok: true };
 
@@ -246,7 +273,7 @@ export async function recordProjectPhoto(
   // project rule): the files will never be recorded, so remove them. Any
   // other error may be temporary; keep the files so a retry can record them.
   const refusal = REFUSAL_STATUS[error.hint ?? ""];
-  if (error.code === "23505" || refusal) await cleanup.storage.from(PROJECT_BUCKET).remove([paths.full, paths.thumb]);
+  if (error.code === "23505" || refusal) await cleanup.storage.from(PROJECT_BUCKET).remove([paths.full, paths.thumb, paths.editedFull, paths.editedThumb]);
   if (error.code === "23505") return { ok: true, duplicate: true };
   if (refusal) return { ok: false, error: friendly(error) ?? "Couldn't save the photo.", status: refusal };
   return { ok: false, error: "Couldn't save the photo. Try again.", status: 500 };

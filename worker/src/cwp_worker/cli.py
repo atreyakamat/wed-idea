@@ -4,6 +4,10 @@
   cwp-worker projects
   cwp-worker upload "~/Pictures/Meera 30th" [--project meera-30th]
   cwp-worker watch "~/Google Drive/Shoots" [--project slug] [--interval 10]
+  cwp-worker edit "~/Pictures/Meera 30th" [--look golden-glow] [--sheet]
+  cwp-worker looks
+
+Add --edit to upload or watch to auto-edit each photo before it goes up.
 """
 
 from __future__ import annotations
@@ -82,23 +86,103 @@ def cmd_projects(_: argparse.Namespace) -> int:
     return 0
 
 
+def _check_look(look: str | None) -> None:
+    if look:
+        from .looks import get_look
+
+        try:
+            get_look(look)
+        except KeyError as exc:
+            raise SystemExit(str(exc).strip("\"'")) from None
+
+
 def cmd_upload(args: argparse.Namespace) -> int:
+    _check_look(args.look)
     client = _client()
     folder = _folder(args.folder)
     project = _project(client, args.project, folder)
-    stats = upload_folder(client, project, folder, Settler(min_age=args.min_age), workers=args.workers, wait=time.sleep)
+    stats = upload_folder(client, project, folder, Settler(min_age=args.min_age), workers=args.workers, wait=time.sleep, edit=args.edit, look=args.look)
     return _summary(stats)
 
 
 def cmd_watch(args: argparse.Namespace) -> int:
+    _check_look(args.look)
     client = _client()
     root = _folder(args.folder)
     project = _project(client, args.project, root) if args.project else None
-    watcher = Watcher(client, root, project=project, settler=Settler(min_age=args.min_age), workers=args.workers)
+    watcher = Watcher(client, root, project=project, settler=Settler(min_age=args.min_age), workers=args.workers, edit=args.edit, look=args.look)
     try:
         watcher.run(args.interval, time.sleep)
     except KeyboardInterrupt:
         print("\nStopped.")
+    return 0
+
+
+def cmd_looks(_: argparse.Namespace) -> int:
+    from .looks import LIGHTING_LABELS, LOOKS_BY_GROUP
+    from .looks.recipes import DEFAULT_LOOK
+
+    for group, looks in LOOKS_BY_GROUP.items():
+        print(f"{LIGHTING_LABELS[group]}:")
+        for look in looks:
+            star = " (default)" if DEFAULT_LOOK[group] == look.id else ""
+            print(f"  {look.id:<16} {look.name}{star}: {look.description}")
+    return 0
+
+
+def cmd_edit(args: argparse.Namespace) -> int:
+    """Edits a folder's photos into a new folder next to it. Originals are never touched."""
+    import csv
+
+    from .images import FULL_LONG_EDGE, open_upright, web_size
+    from .looks import LOOKS_BY_GROUP, edit
+    from .scan import file_name_in_project, photos_in
+    from .sheet import contact_sheet
+
+    _check_look(args.look)
+    folder = _folder(args.folder)
+    out = Path(args.out).expanduser().resolve() if args.out else folder.parent / f"{folder.name} (edited)"
+    if out == folder or folder in out.parents:
+        raise SystemExit("Choose an output folder outside the photos folder.")
+    out.mkdir(parents=True, exist_ok=True)
+    photos = photos_in(folder)
+    if not photos:
+        print("No photos found.")
+        return 0
+
+    rows: list[tuple[str, list]] = []
+    report = []
+    for i, path in enumerate(photos, 1):
+        name = file_name_in_project(folder, path)
+        try:
+            image, _, exif = open_upright(path)
+        except (OSError, ValueError, SyntaxError) as exc:
+            print(f"  skipped {name}: {exc}")
+            continue
+        working = image if args.full else web_size(image, FULL_LONG_EDGE)
+        result = edit(working, look_id=args.look, seed=path.name.encode(), exif=exif)
+        target = (out / name).with_suffix(".jpg")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        result.image.save(target, "JPEG", quality=92, optimize=True, progressive=True)
+        report.append({"file": name, "lighting": result.lighting.group, "confidence": result.lighting.confidence, "look": result.look.id})
+        print(f"[{i}/{len(photos)}] {name}: {result.lighting.label} → {result.look.name}")
+        if args.sheet:
+            cells = [("Original", web_size(image, 720)), (f"{result.look.name} (picked)", result.image)]
+            if args.all_looks:
+                small = web_size(image, 720)
+                for look in LOOKS_BY_GROUP[result.lighting.group]:
+                    if look.id != result.look.id:
+                        cells.append((look.name, edit(small, look_id=look.id, seed=path.name.encode(), exif=exif).image))
+            rows.append((f"{name} · {result.lighting.label} ({result.lighting.confidence:.0%} sure)", cells))
+
+    with (out / "looks.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["file", "lighting", "confidence", "look"])
+        writer.writeheader()
+        writer.writerows(report)
+    if args.sheet and rows:
+        for n in range(0, len(rows), 8):
+            contact_sheet(rows[n : n + 8], f"{folder.name}: before / after").save(out / f"_sheet-{n // 8 + 1}.jpg", quality=88)
+    print(f"Done. Edited photos are in {out}")
     return 0
 
 
@@ -114,6 +198,16 @@ def build_parser() -> argparse.ArgumentParser:
     login.set_defaults(run=cmd_login)
 
     sub.add_parser("projects", help="list your projects and their short names").set_defaults(run=cmd_projects)
+    sub.add_parser("looks", help="list the 25 looks").set_defaults(run=cmd_looks)
+
+    edit_cmd = sub.add_parser("edit", help="auto-edit a folder into a new folder next to it (no upload)")
+    edit_cmd.add_argument("folder")
+    edit_cmd.add_argument("--out", help='output folder (default: "<folder> (edited)" next to it)')
+    edit_cmd.add_argument("--look", help="use this look for every photo instead of picking one")
+    edit_cmd.add_argument("--full", action="store_true", help="edit at full resolution (slower) instead of 2400 px")
+    edit_cmd.add_argument("--sheet", action="store_true", help="also save before/after contact sheets")
+    edit_cmd.add_argument("--all-looks", action="store_true", help="with --sheet, show every look of the photo's light")
+    edit_cmd.set_defaults(run=cmd_edit)
 
     for name, run, about in (
         ("upload", cmd_upload, "upload a folder's new photos once, then stop"),
@@ -124,6 +218,8 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--project", help="short name or id of the project (default: named after the folder)" if name == "upload" else "upload the folder into this one project instead of one project per subfolder")
         p.add_argument("--workers", type=int, default=default_workers(), help="photos uploaded at once (default 3)")
         p.add_argument("--min-age", type=float, default=2.0, help="seconds a file must be unchanged before upload")
+        p.add_argument("--edit", action="store_true", help="auto-edit each photo (guests see the edit; the plain copy is kept too)")
+        p.add_argument("--look", help="with --edit, use this look for every photo (see `cwp-worker looks`)")
         if name == "watch":
             p.add_argument("--interval", type=float, default=10.0, help="seconds between folder checks")
         p.set_defaults(run=run)

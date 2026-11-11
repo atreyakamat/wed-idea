@@ -160,7 +160,7 @@ export async function discardUpload(projectId: string, photoId: string): Promise
   const { data } = await supabase.from("project_photos").select("id").eq("id", photoId).maybeSingle();
   if (data) return;
   const paths = projectPhotoPaths(project.organization_id, project.id, photoId);
-  await createAdminClient().storage.from(PROJECT_BUCKET).remove([paths.full, paths.thumb]);
+  await createAdminClient().storage.from(PROJECT_BUCKET).remove([paths.full, paths.thumb, paths.editedFull, paths.editedThumb]);
 }
 
 function validIds(ids: unknown): ids is string[] {
@@ -181,9 +181,9 @@ export async function deletePhotos(projectId: string, photoIds: string[]): Promi
   const { project } = await managerProject(projectId);
   if (!validIds(photoIds)) return { error: "Pick some photos first." };
   const supabase = await createClient();
-  const { data, error } = await supabase.from("project_photos").delete().eq("project_id", project.id).in("id", photoIds).select("path, thumb_path");
+  const { data, error } = await supabase.from("project_photos").delete().eq("project_id", project.id).in("id", photoIds).select("path, thumb_path, edited_path, edited_thumb_path");
   if (error) return { error: friendlyDbError(error) ?? "Couldn't delete the photos. Try again." };
-  const paths = (data ?? []).flatMap((p) => [p.path as string, p.thumb_path as string]);
+  const paths = (data ?? []).flatMap((p) => [p.path, p.thumb_path, p.edited_path, p.edited_thumb_path].filter((x): x is string => typeof x === "string"));
   if (paths.length) await supabase.storage.from(PROJECT_BUCKET).remove(paths);
   refresh();
   return { error: null, success: `${data?.length ?? 0} photo${data?.length === 1 ? "" : "s"} deleted.` };

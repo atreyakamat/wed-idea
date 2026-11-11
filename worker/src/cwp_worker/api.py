@@ -41,6 +41,8 @@ class Reservation:
     photo_id: str
     full_url: str
     thumb_url: str
+    edited_full_url: str | None = None
+    edited_thumb_url: str | None = None
 
 
 class Client:
@@ -85,9 +87,10 @@ class Client:
     def file_names(self, project_id: str) -> set[str]:
         return set(self._request("GET", f"/projects/{project_id}/files")["names"])
 
-    def reserve(self, project_id: str) -> Reservation:
-        body = self._request("POST", f"/projects/{project_id}/uploads")
-        return Reservation(body["photoId"], body["full"], body["thumb"])
+    def reserve(self, project_id: str, edited: bool = False) -> Reservation:
+        """Upload links for one photo: the plain pair, plus the edited pair when asked."""
+        body = self._request("POST", f"/projects/{project_id}/uploads", json={"edited": edited})
+        return Reservation(body["photoId"], body["full"], body["thumb"], body.get("editedFull"), body.get("editedThumb"))
 
     def put(self, url: str, data: bytes) -> None:
         """Uploads one JPEG to a one-time upload URL."""

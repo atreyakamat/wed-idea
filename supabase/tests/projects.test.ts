@@ -366,12 +366,12 @@ describe("project storage", () => {
     }
   });
 
-  it("caps a folder at two files per allowed photo, plus slack", async () => {
+  it("caps a folder at four files per allowed photo (plain + edited), plus slack", async () => {
     await t.db.exec(`update public.plans set photos_per_event = 1 where id = 'starter'`);
     try {
       const id = await newProject("store-cap");
-      await t.db.exec(`insert into storage.objects (bucket_id, name) select 'project-photos', '${org}/${id}/' || gen_random_uuid() || '.jpg' from generate_series(1, 51)`);
-      await upload(asOwner, `${org}/${id}/${file()}`); // 52nd of 2 × 1 + 50
+      await t.db.exec(`insert into storage.objects (bucket_id, name) select 'project-photos', '${org}/${id}/' || gen_random_uuid() || '.jpg' from generate_series(1, 53)`);
+      await upload(asOwner, `${org}/${id}/${file()}`); // 54th of 4 × 1 + 50
       expect((await failure(upload(asOwner, `${org}/${id}/${file()}`))).message).toMatch(/row-level security/);
       expect((await sql<{ room: boolean }>(`select public.project_has_file_room('${id}') as room`))[0].room).toBe(false);
     } finally {

@@ -36,12 +36,21 @@ except ImportError:  # pragma: no cover - depends on the environment
 
 
 @dataclass(frozen=True)
+class Edited:
+    full: bytes
+    thumb: bytes
+    lighting: str
+    look: str
+
+
+@dataclass(frozen=True)
 class Prepared:
     full: bytes
     thumb: bytes
     width: int
     height: int
     taken_at: str | None
+    edited: Edited | None = None
 
 
 def fit_within(width: int, height: int, long_edge: int) -> tuple[int, int]:
@@ -94,13 +103,38 @@ def _encode(image: Image.Image, long_edge: int, quality: int) -> tuple[bytes, in
     return out.getvalue(), width, height
 
 
-def prepare(path: Path) -> Prepared:
-    """Reads a photo and makes its web-size JPEG and thumbnail."""
+def web_size(image: Image.Image, long_edge: int = FULL_LONG_EDGE) -> Image.Image:
+    width, height = fit_within(image.width, image.height, long_edge)
+    return image if (width, height) == image.size else image.resize((width, height), Image.Resampling.LANCZOS)
+
+
+def open_upright(path: Path) -> tuple[Image.Image, str | None, Image.Exif]:
+    """Opens a photo turned the right way up, in RGB, with its capture time and EXIF.
+
+    The EXIF is only read (camera settings help judge the light); it is never
+    written into the files that are uploaded.
+    """
     with Image.open(path) as opened:
         when = taken_at(opened)
+        exif = opened.getexif()
         image = ImageOps.exif_transpose(opened)
         if image.mode != "RGB":
             image = image.convert("RGB")
-        full, width, height = _encode(image, FULL_LONG_EDGE, FULL_QUALITY)
-        thumb, _, _ = _encode(image, THUMB_LONG_EDGE, THUMB_QUALITY)
-    return Prepared(full=full, thumb=thumb, width=width, height=height, taken_at=when)
+        image.load()
+    return image, when, exif
+
+
+def prepare(path: Path, edit: bool = False, look: str | None = None, seed: bytes = b"") -> Prepared:
+    """Reads a photo and makes its web-size JPEG and thumbnail, plus an edited pair when asked."""
+    image, when, exif = open_upright(path)
+    full, width, height = _encode(image, FULL_LONG_EDGE, FULL_QUALITY)
+    thumb, _, _ = _encode(image, THUMB_LONG_EDGE, THUMB_QUALITY)
+    edited = None
+    if edit:
+        from .looks import edit as edit_image  # numpy is only needed for editing
+
+        result = edit_image(web_size(image), look_id=look, seed=seed or path.name.encode(), exif=exif)
+        edited_full, _, _ = _encode(result.image, FULL_LONG_EDGE, FULL_QUALITY)
+        edited_thumb, _, _ = _encode(result.image, THUMB_LONG_EDGE, THUMB_QUALITY)
+        edited = Edited(full=edited_full, thumb=edited_thumb, lighting=result.lighting.group, look=result.look.id)
+    return Prepared(full=full, thumb=thumb, width=width, height=height, taken_at=when, edited=edited)

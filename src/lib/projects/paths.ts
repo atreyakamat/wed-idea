@@ -4,13 +4,35 @@ import { UUID_PATTERN } from "@/lib/capture/photos";
 
 export const PROJECT_BUCKET = "project-photos";
 
-/** Where a project photo's two files live: "<studio>/<project>/<photo>.jpg". */
+/**
+ * Where a project photo's files live: "<studio>/<project>/<photo>.jpg" and
+ * its thumbnail, plus the auto-edited pair (".edit.jpg", ".edit.thumb.jpg").
+ */
 export function projectPhotoPaths(organizationId: string, projectId: string, photoId: string) {
   for (const id of [organizationId, projectId, photoId]) {
     if (!UUID_PATTERN.test(id)) throw new Error("Invalid id in photo path");
   }
   const base = `${organizationId}/${projectId}/${photoId}`;
-  return { full: `${base}.jpg`, thumb: `${base}.thumb.jpg` };
+  return { full: `${base}.jpg`, thumb: `${base}.thumb.jpg`, editedFull: `${base}.edit.jpg`, editedThumb: `${base}.edit.thumb.jpg` };
+}
+
+/** The five kinds of light the PC app tells apart. */
+export const LIGHTING_GROUPS = ["daylight", "golden", "indoor", "stage", "night"] as const;
+export type LightingGroup = (typeof LIGHTING_GROUPS)[number];
+export const LIGHTING_LABELS: Record<LightingGroup, string> = {
+  daylight: "Daylight",
+  golden: "Golden hour",
+  indoor: "Indoor warm",
+  stage: "Stage / concert",
+  night: "Night / flash",
+};
+
+export const LOOK_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** "golden-glow" -> "Golden Glow", for display. */
+export function lookName(lookId: string): string {
+  const special: Record<string, string> = { "bright-airy": "Bright & Airy", "dark-rich": "Dark & Rich", "classic-bw": "Classic B&W" };
+  return special[lookId] ?? lookId.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
 /** Longest file name the database accepts. */

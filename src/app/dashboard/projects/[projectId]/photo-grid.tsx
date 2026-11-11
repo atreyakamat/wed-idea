@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { FormMessage, type FormState } from "@/components/ui/form";
+import { LIGHTING_LABELS, lookName } from "@/lib/projects/paths";
 import type { ProjectPhoto } from "@/lib/projects/queries";
 import { deletePhotos, loadProjectPhotos, setPhotosHidden } from "../actions";
 
@@ -19,6 +20,7 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, startTransition] = useTransition();
   const [viewing, setViewing] = useState<ProjectPhoto | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   // A click on the dimmed area around the photo closes it (Escape does too).
@@ -77,6 +79,7 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
 
   function open(photo: ProjectPhoto) {
     setViewing(photo);
+    setShowOriginal(false);
     dialogRef.current?.showModal();
   }
 
@@ -133,6 +136,11 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
                 <input type="checkbox" checked={isSelected} onChange={() => toggle(photo.id)} className="h-4 w-4 accent-ink" aria-label={`Select ${photo.fileName}`} />
               </label>
               {photo.hidden ? <span className="absolute bottom-1.5 left-1.5 rounded-full bg-ink/80 px-2 py-0.5 text-[11px] font-medium text-paper">Hidden</span> : null}
+              {photo.look ? (
+                <span className="pointer-events-none absolute bottom-1.5 right-1.5 hidden rounded-full bg-paper/90 px-2 py-0.5 text-[11px] font-medium text-ink group-hover:inline">
+                  {lookName(photo.look)}
+                </span>
+              ) : null}
             </li>
           );
         })}
@@ -153,7 +161,26 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
         {viewing ? (
           <div className="flex flex-col">
             <div className="flex items-center justify-between gap-4 px-4 py-2 text-sm">
-              <span className="truncate">{viewing.fileName}</span>
+              <span className="truncate">
+                {viewing.fileName}
+                {viewing.look ? (
+                  <span className="text-white/60">
+                    {" "}
+                    · {lookName(viewing.look)}
+                    {viewing.lighting ? ` · ${LIGHTING_LABELS[viewing.lighting]}` : ""}
+                  </span>
+                ) : null}
+              </span>
+              {viewing.originalUrl ? (
+                <button
+                  type="button"
+                  aria-pressed={showOriginal}
+                  onClick={() => setShowOriginal((v) => !v)}
+                  className="shrink-0 rounded-full border border-white/30 px-3 py-1 hover:bg-white/10"
+                >
+                  {showOriginal ? "Show edit" : "Show original"}
+                </button>
+              ) : null}
               <form method="dialog">
                 <button type="submit" className="rounded-full px-3 py-1 hover:bg-white/10">
                   Close ✕
@@ -161,7 +188,11 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
               </form>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
-            <img src={viewing.fullUrl} alt={viewing.fileName} className="max-h-[82dvh] w-auto object-contain" />
+            <img
+              src={showOriginal && viewing.originalUrl ? viewing.originalUrl : viewing.fullUrl}
+              alt={viewing.fileName}
+              className="max-h-[82dvh] w-auto object-contain"
+            />
           </div>
         ) : null}
       </dialog>

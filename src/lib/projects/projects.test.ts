@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 import { exifDateToIso, readTakenAt } from "./exif";
 import { parseProjectForm } from "./form";
 import { downloadName } from "./gallery";
-import { isPhotoFile, needsPcApp, projectFileName, projectPhotoPaths } from "./paths";
+import { isPhotoFile, lookName, needsPcApp, projectFileName, projectPhotoPaths } from "./paths";
 import { projectGalleryUrl, projectShareMessage, whatsappShareLink } from "./share";
 import { uniqueProjectSlug } from "./slug";
 import { bearerToken, hashWorkerToken, makeWorkerToken, WORKER_TOKEN_PATTERN } from "./worker-token";
@@ -78,10 +78,12 @@ describe("readTakenAt", () => {
 });
 
 describe("paths", () => {
-  it("puts both files in the project's folder", () => {
+  it("puts every file in the project's folder", () => {
     expect(projectPhotoPaths(ORG, PROJECT, PHOTO)).toEqual({
       full: `${ORG}/${PROJECT}/${PHOTO}.jpg`,
       thumb: `${ORG}/${PROJECT}/${PHOTO}.thumb.jpg`,
+      editedFull: `${ORG}/${PROJECT}/${PHOTO}.edit.jpg`,
+      editedThumb: `${ORG}/${PROJECT}/${PHOTO}.edit.thumb.jpg`,
     });
     expect(() => projectPhotoPaths(ORG, "../x", PHOTO)).toThrow();
   });
@@ -102,6 +104,14 @@ describe("paths", () => {
   it("flags HEIC for the PC app", () => {
     expect(needsPcApp("IMG_1.HEIC")).toBe(true);
     expect(needsPcApp("IMG_1.jpg")).toBe(false);
+  });
+});
+
+describe("lookName", () => {
+  it("shows look ids as names", () => {
+    expect(lookName("golden-glow")).toBe("Golden Glow");
+    expect(lookName("bright-airy")).toBe("Bright & Airy");
+    expect(lookName("classic-bw")).toBe("Classic B&W");
   });
 });
 

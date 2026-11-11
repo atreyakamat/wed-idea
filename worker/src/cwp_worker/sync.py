@@ -24,7 +24,7 @@ MAX_ATTEMPTS = 3
 
 class Api(Protocol):
     def file_names(self, project_id: str) -> set[str]: ...
-    def reserve(self, project_id: str) -> Reservation: ...
+    def reserve(self, project_id: str, edited: bool = False) -> Reservation: ...
     def put(self, url: str, data: bytes) -> None: ...
     def confirm(self, project_id: str, photo: dict) -> bool: ...
     def ensure_project(self, name: str) -> tuple[Project, bool]: ...
@@ -58,11 +58,13 @@ class ProjectSync:
     again (or restarting the worker) uploads nothing twice.
     """
 
-    def __init__(self, api: Api, project: Project, folder: Path, prepare_fn: Callable[[Path], Prepared] = prepare):
+    def __init__(self, api: Api, project: Project, folder: Path, prepare_fn: Callable[..., Prepared] = prepare, *, edit: bool = False, look: str | None = None):
         self.api = api
         self.project = project
         self.folder = folder
         self.prepare = prepare_fn
+        self.edit = edit or look is not None
+        self.look = look
         self.known = api.file_names(project.id)
         self.failures: dict[str, int] = {}
         self._lock = threading.Lock()
@@ -81,21 +83,26 @@ class ProjectSync:
         name = file_name_in_project(self.folder, path)
         if path.suffix.lower() in {".heic", ".heif"} and not HEIC_SUPPORTED:
             raise ApiError('HEIC needs the extra: pip install "cwp-worker[heic]"')
-        prepared = self.prepare(path)
-        reservation = self.api.reserve(self.project.id)
+        prepared = self.prepare(path, edit=self.edit, look=self.look) if self.edit else self.prepare(path)
+        edited = prepared.edited
+        reservation = self.api.reserve(self.project.id, edited=edited is not None)
         self.api.put(reservation.full_url, prepared.full)
         self.api.put(reservation.thumb_url, prepared.thumb)
-        added = self.api.confirm(
-            self.project.id,
-            {
-                "photoId": reservation.photo_id,
-                "fileName": name,
-                "width": prepared.width,
-                "height": prepared.height,
-                "bytes": path.stat().st_size,
-                "takenAt": prepared.taken_at or _modified_at(path),
-            },
-        )
+        photo = {
+            "photoId": reservation.photo_id,
+            "fileName": name,
+            "width": prepared.width,
+            "height": prepared.height,
+            "bytes": path.stat().st_size,
+            "takenAt": prepared.taken_at or _modified_at(path),
+        }
+        if edited:
+            if not (reservation.edited_full_url and reservation.edited_thumb_url):
+                raise ApiError("The server didn't return upload links for the edited photo. Update the app.")
+            self.api.put(reservation.edited_full_url, edited.full)
+            self.api.put(reservation.edited_thumb_url, edited.thumb)
+            photo.update({"edited": True, "lighting": edited.lighting, "look": edited.look})
+        added = self.api.confirm(self.project.id, photo)
         with self._lock:
             self.known.add(name)
         return added
@@ -139,9 +146,11 @@ class ProjectSync:
         return stats
 
 
-def upload_folder(api: Api, project: Project, folder: Path, settler: Settler, *, workers: int = UPLOADS_AT_ONCE, wait: Callable[[float], None], max_rounds: int = 30) -> Stats:
+def upload_folder(
+    api: Api, project: Project, folder: Path, settler: Settler, *, workers: int = UPLOADS_AT_ONCE, wait: Callable[[float], None], max_rounds: int = 30, edit: bool = False, look: str | None = None
+) -> Stats:
     """Uploads everything new in a folder, waiting for files still being written."""
-    sync = ProjectSync(api, project, folder)
+    sync = ProjectSync(api, project, folder, edit=edit, look=look)
     total = Stats()
     for _ in range(max_rounds):
         pending = sync.pending()
@@ -164,8 +173,12 @@ class Watcher:
     With `project` set, the folder itself is that one project instead.
     """
 
-    def __init__(self, api: Api, root: Path, *, project: Project | None = None, settler: Settler | None = None, workers: int = UPLOADS_AT_ONCE):
+    def __init__(
+        self, api: Api, root: Path, *, project: Project | None = None, settler: Settler | None = None, workers: int = UPLOADS_AT_ONCE, edit: bool = False, look: str | None = None
+    ):
         self.api = api
+        self.edit = edit
+        self.look = look
         self.root = root
         self.single = project
         self.settler = settler or Settler()
@@ -194,7 +207,7 @@ class Watcher:
                 return None
             project, created = self.api.ensure_project(folder.name)
             log.info("%s project %s for folder %s", "Created" if created else "Using", project.slug, folder.name)
-        sync = ProjectSync(self.api, project, folder)
+        sync = ProjectSync(self.api, project, folder, edit=self.edit, look=self.look)
         self.syncs[folder] = sync
         return sync
 

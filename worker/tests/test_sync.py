@@ -108,3 +108,20 @@ def test_watch_keeps_going_when_one_project_is_full(tmp_path):
     watcher.scan_once()
     assert len(api.confirmed) == 1
     assert tmp_path / "Shoot" in watcher.blocked and not watcher.disconnected
+
+
+def test_edit_uploads_plain_and_edited_pairs(tmp_path, api):
+    age(make_jpeg(tmp_path / "IMG_1.jpg", size=(600, 400)))
+    project, _ = api.ensure_project("x")
+    stats = upload_folder(api, project, tmp_path, settled(), wait=lambda s: None, edit=True)
+    assert stats.uploaded == 1
+    assert [url.split("/")[3] for url, _ in api.puts] == ["full", "thumb", "edit", "edit-thumb"]
+    photo = api.confirmed[0]
+    assert photo["edited"] is True and photo["lighting"] in {"daylight", "golden", "indoor", "stage", "night"} and photo["look"]
+
+
+def test_a_chosen_look_turns_editing_on(tmp_path, api):
+    age(make_jpeg(tmp_path / "IMG_1.jpg", size=(600, 400)))
+    project, _ = api.ensure_project("x")
+    upload_folder(api, project, tmp_path, settled(), wait=lambda s: None, look="honey-film")
+    assert api.confirmed[0]["look"] == "honey-film"

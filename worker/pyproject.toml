@@ -5,10 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cwp-worker"
 version = "0.1.0"
-description = "Uploads a shoot's photos from your computer to Cute Wedding Polaroid as they land."
+description = "Uploads and auto-edits a shoot's photos from your computer for Cute Wedding Polaroid."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "numpy>=1.24",
   "Pillow>=10.0",
   "requests>=2.31",
 ]

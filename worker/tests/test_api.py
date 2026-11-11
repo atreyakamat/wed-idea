@@ -112,3 +112,32 @@ def test_unfinished_upload_is_not_fatal():
     with pytest.raises(ApiError) as err:
         c.confirm("p", {})
     assert not err.value.fatal
+
+
+def test_edit_command_writes_edited_copies_and_a_report(tmp_path, capsys):
+    from .conftest import make_jpeg
+
+    shoot = tmp_path / "Shoot"
+    make_jpeg(shoot / "IMG_1.jpg", size=(800, 600))
+    make_jpeg(shoot / "Cake" / "IMG_2.jpg", size=(600, 800))
+    assert main(["edit", str(shoot), "--sheet"]) == 0
+    out = tmp_path / "Shoot (edited)"
+    assert (out / "IMG_1.jpg").exists() and (out / "Cake" / "IMG_2.jpg").exists()
+    assert (out / "_sheet-1.jpg").exists()
+    report = (out / "looks.csv").read_text().splitlines()
+    assert report[0] == "file,lighting,confidence,look" and len(report) == 3
+    assert (shoot / "IMG_1.jpg").exists()  # originals untouched
+
+
+def test_edit_refuses_to_write_inside_the_photos_folder(tmp_path):
+    from .conftest import make_jpeg
+
+    make_jpeg(tmp_path / "Shoot" / "a.jpg", size=(100, 100))
+    with pytest.raises(SystemExit, match="outside"):
+        main(["edit", str(tmp_path / "Shoot"), "--out", str(tmp_path / "Shoot" / "out")])
+
+
+def test_looks_lists_all_25(capsys):
+    assert main(["looks"]) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("  ")]
+    assert len(lines) == 25

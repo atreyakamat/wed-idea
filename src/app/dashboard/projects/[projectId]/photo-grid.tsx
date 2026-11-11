@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { FormMessage, type FormState } from "@/components/ui/form";
 import type { ProjectPhoto } from "@/lib/projects/queries";
 import { deletePhotos, loadProjectPhotos, setPhotosHidden } from "../actions";
@@ -20,6 +20,17 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
   const [pending, startTransition] = useTransition();
   const [viewing, setViewing] = useState<ProjectPhoto | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+
+  // A click on the dimmed area around the photo closes it (Escape does too).
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const onBackdrop = (e: MouseEvent) => {
+      if (e.target === dialog) dialog.close();
+    };
+    dialog.addEventListener("click", onBackdrop);
+    return () => dialog.removeEventListener("click", onBackdrop);
+  }, [photos.length]);
 
   if (!photos.length) return null;
 
@@ -136,9 +147,6 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
       <dialog
         ref={dialogRef}
         onClose={() => setViewing(null)}
-        onClick={(e) => {
-          if (e.target === dialogRef.current) dialogRef.current?.close();
-        }}
         className="m-auto max-h-[92dvh] max-w-[92vw] rounded-xl bg-[#171310] p-0 text-white backdrop:bg-black/70"
         aria-label={viewing?.fileName ?? "Photo"}
       >

@@ -2,8 +2,17 @@ import { recordProjectPhoto } from "@/lib/projects/queries";
 import { authenticateWorker, json, jsonError, readJson, workerProject } from "@/lib/projects/worker-api";
 import { friendlyDbError } from "@/lib/studio/status";
 
-const nullableNumber = (v: unknown) => (v === null || v === undefined ? null : typeof v === "number" ? v : Number.NaN);
-const nullableString = (v: unknown) => (v === null || v === undefined || v === "" ? null : typeof v === "string" ? v : "invalid");
+/** A number, null when missing, NaN (rejected later) when not a number. */
+function nullableNumber(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  return typeof v === "number" ? v : Number.NaN;
+}
+
+/** A string, null when missing or empty, "invalid" (rejected later) when not a string. */
+function nullableString(v: unknown): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  return typeof v === "string" ? v : "invalid";
+}
 
 /** Records a photo once both of its files are uploaded. */
 export async function POST(request: Request, ctx: RouteContext<"/api/worker/projects/[projectId]/photos">) {
@@ -19,7 +28,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
     session.supabase,
     project,
     {
-      photoId: String(body.photoId ?? ""),
+      photoId: typeof body.photoId === "string" ? body.photoId : "",
       fileName: typeof body.fileName === "string" ? body.fileName : "",
       width: Number(body.width),
       height: Number(body.height),

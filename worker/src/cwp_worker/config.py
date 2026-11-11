@@ -9,13 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+CONFIG_FILE = "config.json"
+APP_DIR = "cwp-worker"
+
+
 def config_path() -> Path:
     base = os.environ.get("CWP_WORKER_HOME")
     if base:
-        return Path(base) / "config.json"
+        return Path(base) / CONFIG_FILE
     if os.name == "nt":
-        return Path(os.environ.get("APPDATA", Path.home())) / "cwp-worker" / "config.json"
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "cwp-worker" / "config.json"
+        return Path(os.environ.get("APPDATA", Path.home())) / APP_DIR / CONFIG_FILE
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP_DIR / CONFIG_FILE
 
 
 @dataclass(frozen=True)

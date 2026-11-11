@@ -107,8 +107,9 @@ describe("paths", () => {
 
 describe("uniqueProjectSlug", () => {
   it("makes a short name, numbered when taken", () => {
-    expect(uniqueProjectSlug("Meera's 30th!", new Set())).toBe("meera-s-30th");
-    expect(uniqueProjectSlug("Meera's 30th!", new Set(["meera-s-30th", "meera-s-30th-2"]))).toBe("meera-s-30th-3");
+    expect(uniqueProjectSlug("Meera's 30th!", new Set())).toBe("meeras-30th");
+    expect(uniqueProjectSlug("Meera’s 30th!", new Set(["meeras-30th", "meeras-30th-2"]))).toBe("meeras-30th-3");
+    expect(uniqueProjectSlug("Rock Night", new Set())).toBe("rock-night");
   });
   it("always gives a valid slug", () => {
     expect(uniqueProjectSlug("🎉", new Set())).toBe("project");

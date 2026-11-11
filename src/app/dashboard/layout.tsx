@@ -30,7 +30,9 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           </Suspense>
         </div>
         <div className="mx-auto max-w-6xl px-4 pb-3 sm:px-6">
-          <DashboardNav />
+          <Suspense fallback={<div className="h-9" aria-hidden />}>
+            <DashboardNav />
+          </Suspense>
         </div>
       </header>
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">

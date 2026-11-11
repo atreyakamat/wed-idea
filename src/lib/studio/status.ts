@@ -136,10 +136,12 @@ export function studioNotice(studio: AccountFields & { suspendedReason: string |
 type DbError = { code?: string; message?: string; hint?: string | null } | null | undefined;
 
 /**
- * The database's own message for a plan limit, access or event-rule refusal, written to
- * be shown as-is. Null for any other error.
+ * The database's own message for a plan limit, access, event or project-rule refusal,
+ * written to be shown as-is. Null for any other error.
  */
+const FRIENDLY_HINTS = new Set(["plan_limit", "studio_access", "event_rule", "project_rule"]);
+
 export function friendlyDbError(error: DbError): string | null {
-  if (!error?.message) return null;
-  return error.hint === "plan_limit" || error.hint === "studio_access" || error.hint === "event_rule" ? error.message : null;
+  if (!error?.message || !error.hint) return null;
+  return FRIENDLY_HINTS.has(error.hint) ? error.message : null;
 }

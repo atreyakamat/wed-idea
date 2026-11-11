@@ -108,6 +108,8 @@ describe("friendlyDbError", () => {
   it("passes through plan-limit and access messages only", () => {
     expect(friendlyDbError({ code: "P0001", hint: "plan_limit", message: "You've used 1 of 1 events" })).toBe("You've used 1 of 1 events");
     expect(friendlyDbError({ code: "42501", hint: "studio_access", message: "Your trial has ended." })).toBe("Your trial has ended.");
+    expect(friendlyDbError({ code: "22023", hint: "project_rule", message: "Add at least one photo before publishing." })).toBe("Add at least one photo before publishing.");
+    expect(friendlyDbError({ code: "22023", hint: "something_else", message: "internal detail" })).toBeNull();
     expect(friendlyDbError({ code: "42501", message: "new row violates row-level security policy" })).toBeNull();
     expect(friendlyDbError(null)).toBeNull();
   });

@@ -57,7 +57,7 @@ type GuestWithEvent = {
 };
 
 /** The credit comes off only for a plan that removes it, and only while it's paid up. */
-function showBranding(org: { status: StudioStatus; trial_ends_at: string; paid_until: string | null; plans: { remove_branding: boolean } | null } | null): boolean {
+export function showBranding(org: { status: StudioStatus; trial_ends_at: string; paid_until: string | null; plans: { remove_branding: boolean } | null } | null): boolean {
   if (!org?.plans?.remove_branding) return true;
   return !canStartWork(accessFor({ status: org.status, trialEndsAt: org.trial_ends_at, paidUntil: org.paid_until }));
 }

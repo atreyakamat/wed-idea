@@ -20,6 +20,8 @@ from .render import apply_look, exposure_and_balance, to_array, to_image, tone
 # Where the automatic fix aims each kind of light's middle brightness.
 TARGET_MEDIAN = {"daylight": 0.46, "golden": 0.42, "indoor": 0.4, "stage": 0.3, "night": 0.32}
 MAX_EV = 1.5
+# How far the fix may darken: a bright, backlit sunset should stay luminous.
+MAX_DARKEN = {"daylight": -0.5, "golden": -0.25, "indoor": -0.6, "stage": -0.8, "night": -0.8}
 
 
 @dataclass(frozen=True)
@@ -57,7 +59,7 @@ def plan_fix(f: Features, group: str, keep_cast: float) -> Fix:
     # leave dark scenes darker than a daylight shot.
     if f.p95 > 0.92 and ev > 0:
         ev *= 0.35
-    ev = max(-MAX_EV, min(MAX_EV, ev * 0.75))
+    ev = max(MAX_DARKEN[group], min(MAX_EV, ev * 0.75))
 
     # Grey-world white balance, only partly applied: most scenes have a mood.
     cast = min(1.0, max(0.0, keep_cast))

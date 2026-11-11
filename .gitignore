@@ -42,3 +42,8 @@ next-env.d.ts
 
 # allow the documented env template
 !.env.example
+
+# Python worker
+worker/**/__pycache__/
+worker/**/*.egg-info/
+worker/.pytest_cache/

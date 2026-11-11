@@ -42,6 +42,8 @@ beforeAll(async () => {
 
   eventA = (await as<{ id: string }>("authenticated", OWNER_A, eventSql(orgA, "priya-rahul")))[0].id;
   eventB = (await as<{ id: string }>("authenticated", OWNER_B, eventSql(orgB, "other-wedding")))[0].id;
+  // Guests and photos are only added at live events.
+  await db.exec(`update public.events set status = 'live' where id in ('${eventA}', '${eventB}')`);
 
   guestA = (
     await as<{ id: string }>(

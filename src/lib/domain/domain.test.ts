@@ -87,6 +87,9 @@ describe("money", () => {
     expect(rupeesToPaise("₹ 99.99")).toBe(9999);
     expect(rupeesToPaise("-5")).toBeNull();
     expect(rupeesToPaise("1.234")).toBeNull();
+    // Above what the database can store (about ₹2.1 crore).
+    expect(rupeesToPaise("21474836.47")).toBe(2147483647);
+    expect(rupeesToPaise("21474836.48")).toBeNull();
     expect(rupeesToPaise("abc")).toBeNull();
   });
 });

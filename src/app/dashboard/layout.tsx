@@ -59,7 +59,10 @@ async function Account() {
   return (
     <form action={signOut} className="flex items-center gap-3 text-sm">
       <span className="hidden text-muted md:inline">{user.email}</span>
-      <button type="submit" className="rounded-full border border-line px-4 py-2 font-medium hover:border-ink">
+      <Link href="/dashboard/billing" className="whitespace-nowrap font-medium text-muted hover:text-ink">
+        Plan & billing
+      </Link>
+      <button type="submit" className="whitespace-nowrap rounded-full border border-line px-4 py-2 font-medium hover:border-ink">
         Sign out
       </button>
     </form>

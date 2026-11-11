@@ -4,6 +4,8 @@ import { rupeesToPaise } from "@/lib/domain/money";
 import { istInputToIso } from "./time";
 
 export const DEFAULT_GALLERY_DAYS = 7;
+/** Longest an event can run; the database enforces the same. */
+export const MAX_EVENT_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type ParseResult<T> =
@@ -83,6 +85,9 @@ export function parseEventDetails(formData: FormData): ParseResult<EventDetails>
   const closesAt = time("orders_close_at", false) ?? endsAt;
 
   if (startsAt && endsAt && endsAt <= startsAt) fieldErrors.ends_at = "Must be after the start";
+  else if (startsAt && endsAt && new Date(endsAt).getTime() - new Date(startsAt).getTime() > MAX_EVENT_DAYS * DAY_MS) {
+    fieldErrors.ends_at = `An event can last up to ${MAX_EVENT_DAYS} days`;
+  }
   // Only check the order window if one was typed; a blank window follows the
   // event times, whose own error is already shown.
   const customWindow = Boolean(values.orders_open_at || values.orders_close_at);

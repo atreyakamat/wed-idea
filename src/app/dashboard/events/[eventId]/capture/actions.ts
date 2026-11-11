@@ -9,18 +9,24 @@ import { pickGuestCode } from "@/lib/domain/guest-code";
 import { normalizePhone } from "@/lib/domain/phone";
 import { getEvent } from "@/lib/events/queries";
 import { formText } from "@/lib/form-data";
-import { SUSPENDED_MESSAGE } from "@/lib/studio/status";
+import { accessFor, blockedMessage, canCapture, friendlyDbError } from "@/lib/studio/status";
 import { createClient } from "@/lib/supabase/server";
 
 type GuestRow = Parameters<typeof toCaptureGuest>[0];
 
-/** Any studio member (operators included) can capture, but only at a live event of an active studio. */
+/**
+ * Any studio member (operators included) can capture, but only at a live
+ * event, and only while the studio's plan allows it (a live wedding always
+ * finishes, unless the studio is suspended).
+ */
 async function liveEvent(eventId: string) {
   const { user, studio } = await requireStudio();
-  if (studio.status === "suspended") throw new Error(SUSPENDED_MESSAGE);
   const event = await getEvent(studio.id, eventId);
   if (!event) throw new Error("Event not found.");
   if (event.status !== "live") throw new Error("This event isn't live, so capture is closed.");
+  if (!canCapture(studio, { status: event.status, endsAt: event.ends_at })) {
+    throw new Error(blockedMessage(accessFor(studio)) ?? "Capture is closed.");
+  }
   return { user, studio, event };
 }
 
@@ -75,6 +81,8 @@ async function createGuest(
       .single<GuestRow>();
 
     if (!inserted.error) return { row: inserted.data, returning: false };
+    const friendly = friendlyDbError(inserted.error);
+    if (friendly) throw new Error(friendly);
     if (inserted.error.code !== "23505") break;
 
     const existing = await findGuest(supabase, eventId, phone);
@@ -141,7 +149,7 @@ export async function savePhoto(
     height: input.height,
     created_by: user.id,
   });
-  if (error && error.code !== "23505") return { ok: false, error: "Couldn't save the photo. Try again." };
+  if (error && error.code !== "23505") return { ok: false, error: friendlyDbError(error) ?? "Couldn't save the photo. Try again." };
   return { ok: true };
 }
 

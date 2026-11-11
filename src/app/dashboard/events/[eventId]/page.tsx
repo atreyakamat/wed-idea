@@ -43,7 +43,7 @@ async function EventView({ params }: { params: PageProps<"/dashboard/events/[eve
   const counts = await eventCounts(event.id);
 
   const statusOptions = nextStatuses(event.status).map((to) => {
-    const check = checkTransition(event.status, to, locked);
+    const check = checkTransition(event.status, to, locked, event.starts_at);
     return {
       to,
       action: changeStatus.bind(null, event.id, to),
@@ -126,6 +126,7 @@ async function EventView({ params }: { params: PageProps<"/dashboard/events/[eve
           action={updateEventDetails.bind(null, event.id)}
           submitLabel="Save details"
           readOnly={!manager}
+          startLocked={event.status !== "draft"}
           defaults={{
             couple_names: event.couple_names,
             slug: event.slug,

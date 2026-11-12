@@ -78,7 +78,27 @@ Counts are cookie-free, so no cookie banner is needed. They run only on public p
    first open. It needs an Apple Developer account and a Windows signing
    certificate.
 
-## 8. Before you post on Product Hunt
+## 8. Online payment (Razorpay)
+
+Works with test keys now; switch to live keys once Razorpay approves your KYC.
+
+1. Razorpay dashboard → **Account & Settings → API keys** (Test mode first):
+   generate a key. Put `RAZORPAY_KEY_ID` (rzp_test_…) and
+   `RAZORPAY_KEY_SECRET` in Netlify → Site configuration → Environment
+   variables.
+2. Razorpay → **Webhooks → Add new webhook**:
+   - URL: `https://<your site>/api/razorpay/webhook`
+   - Secret: any long random text; put the same in `RAZORPAY_WEBHOOK_SECRET`
+   - Events: `payment.captured` and `order.paid`
+3. Redeploy. Plan & billing now shows **Pay** buttons (1, 3, 6 or 12 months).
+   Try it with Razorpay's test UPI id `success@razorpay` or a test card.
+4. After KYC: repeat steps 1–2 in **Live mode** and replace the three values.
+   Nothing else changes.
+
+Payments land in the same Payments list as ones you record by hand, and
+paying early adds the months on to the current period.
+
+## 9. Before you post on Product Hunt
 
 - [ ] Steps 1–4 done and checked
 - [ ] Your own studio logo uploaded (Studio page)

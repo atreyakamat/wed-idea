@@ -14,7 +14,7 @@ const deliverySteps = [
   },
   {
     title: "Every photo edited to its light",
-    body: "The app reads each photo's light (daylight, golden hour, indoor, stage, night) and applies one of 25 looks, after fixing exposure and white balance.",
+    body: "Each photo's light is read (daylight, golden hour, indoor, stage, night), exposure and white balance are fixed, and one of 25 looks is applied. Swap any look in one tap; it learns your style.",
   },
   {
     title: "One link for everyone",
@@ -30,6 +30,8 @@ const guestFeatures = [
 ];
 
 const forStudios = [
+  { title: "Review in minutes", body: "Flip through with the arrow keys, swap a look with 1–5, approve with Enter. One click puts a look on every photo in the same light." },
+  { title: "Learns your style", body: "Pick the same look a few times and new photos in that light start with it, in the browser and the PC app." },
   { title: "Your brand", body: "Your logo on every gallery. Remove our name on the Pro plan." },
   { title: "Originals stay with you", body: "Only web-size copies are uploaded. Your RAWs and full-size files never leave your computer." },
   { title: "Private by default", body: "Galleries open only with their link, aren't on search engines, and close after your plan's gallery period." },
@@ -39,7 +41,7 @@ const forStudios = [
 const faqs = [
   {
     q: "Do I need to install anything?",
-    a: "No. You can upload from the browser. The free PC app adds auto-editing and watches a folder (a camera card or Google Drive) so photos upload on their own.",
+    a: "No. Upload from the browser and every photo is auto-edited right there. The free PC app is for hands-off days: it watches a folder (a camera card or Google Drive) and uploads photos on their own.",
   },
   {
     q: "How fast is it?",

@@ -127,3 +127,25 @@ def test_prepare_makes_an_edited_pair(tmp_path):
 def test_prepare_with_a_chosen_look(tmp_path):
     p = prepare(make_jpeg(tmp_path / "a.jpg", size=(800, 600)), edit=True, look="classic-bw")
     assert p.edited.look == "classic-bw"
+
+
+def test_studio_favourite_look_wins_in_its_light():
+    from cwp_worker.looks.engine import STYLE_BONUS, score_looks
+    from cwp_worker.looks.features import measure
+
+    image = Image.new("RGB", (64, 48), (90, 150, 60))
+    f = measure(image)
+    plain = score_looks(f, "daylight")
+    styled = score_looks(f, "daylight", {"daylight": "soft-pastel", "night": "classic-bw"})
+    assert styled["soft-pastel"] == round(plain["soft-pastel"] + STYLE_BONUS, 3)
+    assert max(styled, key=styled.get) == "soft-pastel"
+
+
+def test_edit_uses_the_studio_style_and_ignores_bad_entries():
+    image = Image.new("RGB", (64, 48), (90, 150, 60))
+    plain = edit(image)
+    styled = edit(image, preferred={plain.lighting.group: [lk for lk in LOOKS_BY_GROUP[plain.lighting.group] if lk.id != plain.look.id][0].id})
+    assert styled.look.id != plain.look.id
+    # A look from another light, or an unknown one, is ignored.
+    assert edit(image, preferred={plain.lighting.group: "classic-bw" if plain.lighting.group != "night" else "clean-daylight"}).look.id == plain.look.id
+    assert edit(image, preferred={plain.lighting.group: "no-such-look"}).look.id == plain.look.id

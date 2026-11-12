@@ -1,8 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { processImage } from "@/lib/capture/process-image";
+import { decode } from "@/lib/looks/client";
+import { editPixels, firstEditPaths } from "@/lib/looks/edit-upload";
+import type { StylePrefs } from "@/lib/looks/engine";
 import { EXIF_SCAN_BYTES, readTakenAt } from "@/lib/projects/exif";
 import { averageTone } from "@/lib/projects/tone";
 import { isPhotoFile, needsPcApp, PROJECT_BUCKET, projectFileName, projectPhotoPaths } from "@/lib/projects/paths";
@@ -16,7 +19,21 @@ type Props = {
   existingNames: string[];
   /** Photos the plan still allows in this project, or null if unknown. */
   remaining: number | null;
+  /** The studio's favourite look per kind of light. */
+  style: StylePrefs;
 };
+
+const AUTO_EDIT_KEY = "cwp:auto-edit";
+
+const noChanges = () => () => undefined;
+
+function readAutoEdit(): boolean {
+  try {
+    return localStorage.getItem(AUTO_EDIT_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
 
 type Item = { file: File; name: string };
 type Failure = Item & { error: string };
@@ -66,9 +83,12 @@ async function takenAt(file: File): Promise<string | null> {
   }
 }
 
-export function FolderUploader({ projectId, organizationId, existingNames, remaining }: Readonly<Props>) {
+export function FolderUploader({ projectId, organizationId, existingNames, remaining, style }: Readonly<Props>) {
   const router = useRouter();
   const [run, setRun] = useState<Run | null>(null);
+  const savedAutoEdit = useSyncExternalStore(noChanges, readAutoEdit, () => true);
+  const [autoEditChoice, setAutoEdit] = useState<boolean | null>(null);
+  const autoEdit = autoEditChoice ?? savedAutoEdit;
   const [dragging, setDragging] = useState(false);
   const known = useRef(new Set(existingNames));
   const stop = useRef<string | null>(null);
@@ -93,12 +113,19 @@ export function FolderUploader({ projectId, organizationId, existingNames, remai
     try {
       const [photo, taken] = await Promise.all([processImage(item.file), takenAt(item.file)]);
       URL.revokeObjectURL(photo.previewUrl);
-      const tone = await averageTone(photo.thumb);
+      // Auto-edit: read the light, pick a look and render it, off the main thread.
+      const edited = autoEdit ? await editPixels(await decode(photo.full, Number.POSITIVE_INFINITY), photoId, { style }).catch(() => null) : null;
+      const tone = edited?.tone ?? (await averageTone(photo.thumb));
       const paths = projectPhotoPaths(organizationId, projectId, photoId);
       const bucket = createClient().storage.from(PROJECT_BUCKET);
-      const [full, thumb] = await Promise.all([bucket.upload(paths.full, photo.full, UPLOAD_OPTIONS), bucket.upload(paths.thumb, photo.thumb, UPLOAD_OPTIONS)]);
-      stored = !full.error || !thumb.error;
-      if (full.error || thumb.error) throw new Error("Upload failed. Check the connection and retry.");
+      const uploads = [bucket.upload(paths.full, photo.full, UPLOAD_OPTIONS), bucket.upload(paths.thumb, photo.thumb, UPLOAD_OPTIONS)];
+      if (edited) {
+        const editPaths = firstEditPaths(organizationId, projectId, photoId);
+        uploads.push(bucket.upload(editPaths.full, edited.full, UPLOAD_OPTIONS), bucket.upload(editPaths.thumb, edited.thumb, UPLOAD_OPTIONS));
+      }
+      const results = await Promise.all(uploads);
+      stored = results.some((r) => !r.error);
+      if (results.some((r) => r.error)) throw new Error("Upload failed. Check the connection and retry.");
 
       const saved = await saveProjectPhoto(projectId, {
         photoId,
@@ -108,6 +135,7 @@ export function FolderUploader({ projectId, organizationId, existingNames, remai
         bytes: item.file.size,
         takenAt: taken ?? (item.file.lastModified ? new Date(item.file.lastModified).toISOString() : null),
         tone,
+        edit: edited ? { lighting: edited.group, look: edited.lookId } : null,
       });
       if (!saved.ok) {
         // A plan or access refusal applies to every file left: stop the run.
@@ -203,6 +231,22 @@ export function FolderUploader({ projectId, organizationId, existingNames, remai
             Choose photos
           </button>
         </div>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input
+            type="checkbox"
+            checked={autoEdit}
+            disabled={busy}
+            onChange={(e) => {
+              setAutoEdit(e.target.checked);
+              try {
+                localStorage.setItem(AUTO_EDIT_KEY, e.target.checked ? "on" : "off");
+              } catch {
+                // Remembering the choice is a convenience only.
+              }
+            }}
+          />
+          Auto-edit each photo to suit its light (you can change looks later in Review)
+        </label>
         <input
           ref={folderInput}
           type="file"

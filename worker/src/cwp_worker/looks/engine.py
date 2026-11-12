@@ -14,7 +14,7 @@ from PIL import Image
 
 from .features import Features, measure
 from .lighting import Lighting, classify
-from .recipes import DEFAULT_LOOK, LOOKS_BY_GROUP, Look, get_look
+from .recipes import DEFAULT_LOOK, LOOKS_BY_GROUP, LOOKS_BY_ID, Look, get_look
 from .render import apply_look, exposure_and_balance, to_array, to_image, tone
 
 # Where the automatic fix aims each kind of light's middle brightness.
@@ -37,6 +37,11 @@ class Fix:
 # so a wrong guess never means a heavy wrong look.
 UNSURE_FAMILY = 0.6
 UNSURE_STRENGTH = 0.55
+
+# How much a studio's favourite look (learnt from its picks on the website)
+# is preferred over the scene's own pick. Exported to the website by
+# tools/export_looks.py.
+STYLE_BONUS = 2.0
 
 
 @dataclass(frozen=True)
@@ -84,8 +89,8 @@ def _around(value: float, centre: float, width: float) -> float:
     return math.exp(-(((value - centre) / width) ** 2))
 
 
-def score_looks(f: Features, group: str) -> dict[str, float]:
-    """How well each look of the group suits this photo. The default gets a head start."""
+def score_looks(f: Features, group: str, preferred: dict[str, str] | None = None) -> dict[str, float]:
+    """How well each look of the group suits this photo. The default gets a head start, the studio's favourite a bigger one."""
     s: dict[str, float] = {look.id: 0.0 for look in LOOKS_BY_GROUP[group]}
     s[DEFAULT_LOOK[group]] = 0.5
     if group == "daylight":
@@ -112,25 +117,31 @@ def score_looks(f: Features, group: str) -> dict[str, float]:
         flash_like = 1.0 if f.flash_fired else min(max(f.centre_ratio - 1.4, 0) / 1.2, 1.0)
         s["flash-film"] += 1.6 * flash_like * min(f.skin_share / 0.06, 1.0)
         s["dark-rich"] += 0.8 * min(f.saturation / 0.45, 1.0) * (1 - min(f.dark_share / 0.7, 1))
+    favourite = (preferred or {}).get(group)
+    if favourite in s:
+        s[favourite] += STYLE_BONUS
     return {k: round(v, 3) for k, v in s.items()}
 
 
-def pick_look(f: Features, lighting: Lighting) -> tuple[Look, dict[str, float]]:
-    scores = score_looks(f, lighting.group)
+def pick_look(f: Features, lighting: Lighting, preferred: dict[str, str] | None = None) -> tuple[Look, dict[str, float]]:
+    scores = score_looks(f, lighting.group, preferred)
     return get_look(max(scores, key=lambda k: scores[k])), scores
 
 
-def edit(image: Image.Image, look_id: str | None = None, strength: float = 1.0, seed: bytes = b"", exif: Image.Exif | None = None) -> EditResult:
-    """Edits a photo. With no look_id, the look is picked from the light."""
+def edit(
+    image: Image.Image, look_id: str | None = None, strength: float = 1.0, seed: bytes = b"", exif: Image.Exif | None = None, preferred: dict[str, str] | None = None
+) -> EditResult:
+    """Edits a photo. With no look_id, the look is picked from the light (and the studio's favourites, if given)."""
     f = measure(image, exif)
     lighting = classify(f)
+    preferred = {g: lk for g, lk in (preferred or {}).items() if lk in LOOKS_BY_ID and LOOKS_BY_ID[lk].group == g}
     if look_id:
-        look, scores = get_look(look_id), score_looks(f, lighting.group)
-    elif lighting.family_confidence < UNSURE_FAMILY:
-        look, scores = get_look(DEFAULT_LOOK[lighting.group]), score_looks(f, lighting.group)
+        look, scores = get_look(look_id), score_looks(f, lighting.group, preferred)
+    elif lighting.family_confidence < UNSURE_FAMILY and lighting.group not in preferred:
+        look, scores = get_look(DEFAULT_LOOK[lighting.group]), score_looks(f, lighting.group, preferred)
         strength = min(strength, UNSURE_STRENGTH)
     else:
-        look, scores = pick_look(f, lighting)
+        look, scores = pick_look(f, lighting, preferred)
     fix = plan_fix(f, lighting.group, look.keep_cast)
     rgb = apply_fix(to_array(image), fix)
     rgb = apply_look(rgb, look, strength=strength, seed=seed)

@@ -21,6 +21,9 @@ dev = ["pytest>=8"]
 [project.scripts]
 cwp-worker = "cwp_worker.cli:main"
 
+[project.gui-scripts]
+cwp-worker-app = "cwp_worker.app:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

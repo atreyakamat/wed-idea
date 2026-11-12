@@ -1,0 +1,107 @@
+# Builds the PC app installers: Windows (.exe) and macOS (.dmg, Apple silicon
+# and Intel). A tag "pc-app-vX.Y.Z" also publishes them as a GitHub release,
+# which the dashboard's download buttons point to.
+name: PC app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["pc-app-v*"]
+  pull_request:
+    paths:
+      - "worker/packaging/**"
+      - "worker/src/cwp_worker/app.py"
+      - "worker/src/cwp_worker/app_logic.py"
+      - ".github/workflows/pc-app.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+          - os: macos-latest
+            target: mac-apple-silicon
+          - os: macos-15-intel
+            target: mac-intel
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/pc-app-v* ]]; then v="${GITHUB_REF#refs/tags/pc-app-v}"; else v="$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"; fi
+          echo "value=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Install (locked, with hashes)
+        run: |
+          python -m pip install --only-binary ":all:" --require-hashes -r packaging/requirements-build.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+          python -c "import tkinter, cwp_worker.app, cwp_worker.looks; print('window and engine import fine')"
+
+      - name: Build the app
+        run: python packaging/build.py
+
+      - name: Check the built app edits a photo
+        run: |
+          mkdir -p smoke/in
+          python -c "from PIL import Image; Image.new('RGB', (900, 600), (200, 150, 90)).save('smoke/in/test.jpg')"
+          if [[ "${{ matrix.target }}" == windows ]]; then app="dist/Cute Wedding Polaroid/Cute Wedding Polaroid.exe"; else app="dist/Cute Wedding Polaroid.app/Contents/MacOS/Cute Wedding Polaroid"; fi
+          "$app" edit smoke/in --out smoke/out
+          test -f smoke/out/test.jpg && test -f smoke/out/looks.csv && cat smoke/out/looks.csv
+
+      - name: Windows installer
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; }
+          & $iscc "/DAppVersion=${{ steps.version.outputs.value }}" packaging\windows.iss
+          Get-ChildItem dist-installer
+
+      - name: macOS disk image
+        if: matrix.target != 'windows'
+        run: |
+          mkdir -p dist-installer
+          name="CuteWeddingPolaroid-Mac-${{ matrix.target == 'mac-intel' && 'Intel' || 'AppleSilicon' }}.dmg"
+          hdiutil create -volname "Cute Wedding Polaroid" -srcfolder "dist/Cute Wedding Polaroid.app" -ov -format UDZO "dist-installer/$name"
+          ls -la dist-installer
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pc-app-${{ matrix.target }}
+          path: worker/dist-installer/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/pc-app-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -la installers
+          gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --title "PC app ${TAG#pc-app-v}" \
+            --notes "Windows: run the Setup file. Mac: open the .dmg and drag the app to Applications (Apple silicon for M1 and newer, Intel for older Macs)."

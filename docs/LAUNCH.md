@@ -67,7 +67,18 @@ Counts are cookie-free, so no cookie banner is needed. They run only on public p
 1. `npx supabase link --project-ref <your ref>` (once), then `npx supabase db push` to apply new migrations.
 2. Supabase → Database → Backups: daily backups come with the Pro plan (about $25 a month). Turn it on before real customers' photos are stored.
 
-## 7. Before you post on Product Hunt
+## 7. PC app downloads
+
+1. Merge the PC app PR, then publish the first release from your computer:
+   `git tag pc-app-v0.1.0 && git push origin pc-app-v0.1.0`
+2. GitHub builds the Windows and Mac installers (about 10 minutes) and
+   attaches them to a release. The dashboard's download buttons point to
+   the latest release, so nothing else to set.
+3. Optional, later (paid): code-signing removes the "unknown app" warning on
+   first open. It needs an Apple Developer account and a Windows signing
+   certificate.
+
+## 8. Before you post on Product Hunt
 
 - [ ] Steps 1–4 done and checked
 - [ ] Your own studio logo uploaded (Studio page)

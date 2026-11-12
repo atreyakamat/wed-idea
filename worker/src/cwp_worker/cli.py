@@ -77,6 +77,12 @@ def cmd_login(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_app(_: argparse.Namespace) -> int:
+    from .app import main as app_main  # Tkinter is only needed for the window
+
+    return app_main()
+
+
 def cmd_projects(_: argparse.Namespace) -> int:
     projects = _client().projects()
     if not projects:
@@ -197,6 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     login.add_argument("--token", required=True, help="the cwp_wk_… key from Connect a PC")
     login.set_defaults(run=cmd_login)
 
+    sub.add_parser("app", help="open the PC app window").set_defaults(run=cmd_app)
     sub.add_parser("projects", help="list your projects and their short names").set_defaults(run=cmd_projects)
     sub.add_parser("looks", help="list the 25 looks").set_defaults(run=cmd_looks)
 
@@ -227,6 +234,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The installed app (a frozen build) opens its window when started with no arguments.
+    if argv is None and getattr(sys, "frozen", False) and len(sys.argv) == 1:
+        argv = ["app"]
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose or args.command == "watch" else logging.WARNING, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     try:

@@ -30,7 +30,10 @@ export function ConnectForm({ siteUrl }: Readonly<{ siteUrl: string }>) {
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
-        <p className="text-sm text-muted">Run it once on that computer. Treat it like a password: anyone with it can upload to your studio.</p>
+        <p className="text-sm text-muted">
+          Paste it into the PC app&apos;s &ldquo;Connect this computer&rdquo; box (or run it in a terminal if you use the command line). Treat it like a
+          password: anyone with it can upload to your studio.
+        </p>
       </div>
     );
   }

@@ -48,3 +48,7 @@ worker/**/__pycache__/
 worker/**/*.egg-info/
 worker/.pytest_cache/
 /public/vendor/
+/worker/dist/
+/worker/build/
+/worker/dist-installer/
+/worker/smoke/

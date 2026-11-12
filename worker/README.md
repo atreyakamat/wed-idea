@@ -8,6 +8,26 @@ removed.
 
 ## Install
 
+Most photographers: download the app from the dashboard (**Photo delivery →
+Connect a PC**): a Windows installer or a Mac disk image. Paste the connect
+line, choose a folder, press Start.
+
+### Building the installers
+
+`.github/workflows/pc-app.yml` builds them on GitHub (Windows, Mac Apple
+silicon, Mac Intel) for every change to the app. Push a tag to publish a
+release the dashboard's download buttons point to:
+
+```sh
+git tag pc-app-v0.2.0 && git push origin pc-app-v0.2.0
+```
+
+The builds aren't code-signed yet, so Windows and macOS show a warning the
+first time (the dashboard explains how to open it). Signing needs an Apple
+Developer account and a Windows code-signing certificate.
+
+### Command line
+
 Python 3.10 or newer:
 
 ```sh

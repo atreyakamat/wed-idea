@@ -7,6 +7,8 @@ import { formatIstDate } from "@/lib/events/time";
 import { getBilling, type Billing, type Plan } from "@/lib/studio/billing";
 import { PAYMENT_METHOD_LABELS } from "@/lib/studio/payments";
 import { daysLeft, PAYMENT_GRACE_DAYS } from "@/lib/studio/status";
+import { razorpayConfig } from "@/lib/razorpay";
+import { PayOnline } from "./pay-online";
 import { RequestPlanForm } from "./request-form";
 import { BRAND_NAME } from "@/lib/brand";
 
@@ -70,6 +72,7 @@ async function BillingContent() {
   const { plan, usage } = billing;
   const manager = canManage(studio.role);
   const paidPlans = billing.plans.filter((p) => !p.is_trial);
+  const online = Boolean(razorpayConfig()) && studio.status !== "suspended";
 
   return (
     <div className="mt-8 flex flex-col gap-8">
@@ -126,8 +129,17 @@ async function BillingContent() {
                     </li>
                   ))}
                 </ul>
-                <div className="mt-5">
-                  {manager && !current ? (
+                <div className="mt-5 flex flex-col gap-3">
+                  {manager && online ? <PayOnline planId={p.id} planName={p.name} pricePaise={p.price_paise} brandName={BRAND_NAME} renew={current && studio.status === "active"} /> : null}
+                  {manager && !current && online ? (
+                    <details className="text-sm">
+                      <summary className="cursor-pointer text-muted hover:text-ink">Pay by bank transfer instead</summary>
+                      <div className="mt-3">
+                        <RequestPlanForm planId={p.id} planName={p.name} requested={billing.openRequest?.plan_id === p.id} />
+                      </div>
+                    </details>
+                  ) : null}
+                  {manager && !current && !online ? (
                     <RequestPlanForm planId={p.id} planName={p.name} requested={billing.openRequest?.plan_id === p.id} />
                   ) : null}
                   {!manager && !current ? <p className="text-xs text-muted">Ask your studio owner to change the plan.</p> : null}
@@ -136,7 +148,11 @@ async function BillingContent() {
             );
           })}
         </div>
-        <p className="mt-3 text-xs text-muted">Pay by UPI or bank transfer for now. We confirm your payment and switch your plan, usually the same day.</p>
+        <p className="mt-3 text-xs text-muted">
+          {online
+            ? "Pay online by UPI, card or net banking (secured by Razorpay); your plan switches straight away. Paying early adds the months on to your current period."
+            : "Pay by UPI or bank transfer for now. We confirm your payment and switch your plan, usually the same day."}
+        </p>
       </section>
 
       {manager ? (

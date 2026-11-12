@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BRAND_NAME } from "@/lib/brand";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -11,6 +12,7 @@ import { GalleryView } from "./gallery-view";
 // send it to other sites in the Referer header.
 export const metadata: Metadata = {
   title: "Your photos",
+  description: "Your photos are ready. Tap to see them, save your favourites and download them all.",
   robots: { index: false, follow: false, nocache: true },
   referrer: "no-referrer",
 };
@@ -83,13 +85,17 @@ async function Gallery({ params }: Readonly<{ params: PageProps<"/p/[token]">["p
       </div>
 
       <footer className="mx-auto mt-10 max-w-6xl pb-12 text-center text-xs text-muted">
-        Only people with this link can see these photos.
+        Only people with this link can see these photos.{" "}
+        <Link href="/privacy" className="underline-offset-4 hover:underline">
+          Privacy
+        </Link>
+        .
         {gallery.showBranding ? (
           <>
             {" "}
             Delivered with{" "}
             <Link href="/" className="font-display italic underline-offset-4 hover:underline">
-              Cute Wedding Polaroid
+              {BRAND_NAME}
             </Link>
           </>
         ) : null}

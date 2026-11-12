@@ -8,6 +8,7 @@ import { getBilling, type Billing, type Plan } from "@/lib/studio/billing";
 import { PAYMENT_METHOD_LABELS } from "@/lib/studio/payments";
 import { daysLeft, PAYMENT_GRACE_DAYS } from "@/lib/studio/status";
 import { RequestPlanForm } from "./request-form";
+import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata: Metadata = { title: "Plan & billing" };
 
@@ -59,7 +60,7 @@ function features(plan: Plan): string[] {
     `Up to ${fmt.format(plan.photos_per_event)} photos per event`,
     `${plan.team_seats} team seat${plan.team_seats === 1 ? "" : "s"}`,
     `Galleries kept up to ${plan.gallery_days} days`,
-    plan.remove_branding ? "Your brand only on guest galleries" : "Small Cute Wedding Polaroid credit on galleries",
+    plan.remove_branding ? "Your brand only on guest galleries" : `Small ${BRAND_NAME} credit on galleries`,
   ];
 }
 

@@ -4,39 +4,58 @@ import { PolaroidCard } from "@/components/polaroid/polaroid-card";
 import { SAMPLE_PHOTO, SAMPLE_TEXT } from "@/lib/polaroid/samples";
 import { getTemplate, TEMPLATES } from "@/lib/polaroid/templates";
 import type { PolaroidTemplate } from "@/lib/polaroid/types";
+import { SiteFooter, SiteHeader } from "@/components/site/site-chrome";
 import { FadeIn } from "./fade-in";
 
-const steps = [
+const deliverySteps = [
   {
-    title: "Snap at the backdrop",
-    body: "Guests pose, we shoot. A short code makes sure every photo finds its owner.",
+    title: "Drop the shoot's folder",
+    body: "Drag it into the browser, or let the PC app watch your camera card or Google Drive folder. New photos upload as they land.",
   },
   {
-    title: "Photos on WhatsApp",
-    body: "A private link lands on their phone the same day. Photos stay up for 7 days.",
+    title: "Every photo edited to its light",
+    body: "The app reads each photo's light (daylight, golden hour, indoor, stage, night) and applies one of 25 looks, after fixing exposure and white balance.",
   },
   {
-    title: "Polaroids at their door",
-    body: "Guests order prints during the event. We courier them anywhere in India in 1–2 days.",
+    title: "One link for everyone",
+    body: "Hide the misses, publish, and send one private link on WhatsApp. Guests have their photos the same evening.",
   },
 ];
 
-const forCouples = [
+const guestFeatures = [
+  { title: "Opens like an album", body: "A cover photo, your logo, and photos in the order they were taken. No app, no sign-up." },
+  { title: "Save to Photos", body: "One tap saves a photo straight to an iPhone or Android camera roll." },
+  { title: "Favourites", body: "Guests ❤ the ones they love. You see which photos everyone loved most." },
+  { title: "Download all", body: "Every photo, or just the favourites, as a zip. Phones get it in easy parts." },
+];
+
+const forStudios = [
+  { title: "Your brand", body: "Your logo on every gallery. Remove our name on the Pro plan." },
+  { title: "Originals stay with you", body: "Only web-size copies are uploaded. Your RAWs and full-size files never leave your computer." },
+  { title: "Private by default", body: "Galleries open only with their link, aren't on search engines, and close after your plan's gallery period." },
+  { title: "Live polaroid corner", body: "Run a backdrop at the event: each guest's photo is tagged to their WhatsApp number and printed in the couple's design." },
+];
+
+const faqs = [
   {
-    title: "Your own design",
-    body: "Pick a style, add your names, date and colours. You lock it before the wedding.",
+    q: "Do I need to install anything?",
+    a: "No. You can upload from the browser. The free PC app adds auto-editing and watches a folder (a camera card or Google Drive) so photos upload on their own.",
   },
   {
-    title: "One simple bill",
-    body: "Every print and courier charge on one statement at the end. No surprises.",
+    q: "How fast is it?",
+    a: "Each photo takes about a second to edit and upload on a normal laptop, so a 500-photo shoot is ready in roughly 10 minutes.",
   },
   {
-    title: "You set the limits",
-    body: "Cap copies per guest or the total budget. Orders close when you say.",
+    q: "What happens to guests' photos and numbers?",
+    a: "They're used only to deliver the photos. Galleries close after your plan's gallery period, and anyone can ask for their photos to be removed. See the Privacy policy.",
   },
   {
-    title: "Private by default",
-    body: "Each guest sees only their own photos, and everything is deleted after 7 days.",
+    q: "Can guests order prints?",
+    a: "Not yet. Printed polaroids delivered across India are coming soon. Today guests save and download their photos.",
+  },
+  {
+    q: "How do I pay?",
+    a: "Start with the free trial. Plans are monthly; for now we invoice by UPI or bank transfer, and online checkout is on its way.",
   },
 ];
 
@@ -63,42 +82,27 @@ function Card({ template, uid, className }: { template: PolaroidTemplate; uid: s
 export default function Home() {
   return (
     <main className="flex-1 overflow-x-hidden">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <span className="font-display text-xl italic">Cute Wedding Polaroid</span>
-        <nav className="flex items-center gap-5 text-sm text-muted">
-          <a href="#how" className="hidden hover:text-ink sm:inline">
-            How it works
-          </a>
-          <Link href="/templates" className="hover:text-ink">
-            Templates
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <section className="mx-auto grid max-w-6xl items-center gap-14 px-6 pb-24 pt-8 md:grid-cols-2">
         <FadeIn>
-          <p className="font-display text-lg italic text-accent">for weddings in Goa &amp; beyond</p>
+          <p className="font-display text-lg italic text-accent">for wedding &amp; event photographers</p>
           <h1 className="mt-3 font-display text-5xl leading-[1.05] sm:text-7xl">
-            Every guest leaves with <em className="text-accent">a memory</em> in hand.
+            Guests get their photos <em className="text-accent">tonight</em>.
           </h1>
           <p className="mt-6 max-w-md text-lg text-muted">
-            A polaroid backdrop at your wedding. Photos on your guests&apos; WhatsApp, prints at their
-            door, and one simple bill for the couple.
+            Drop the shoot&apos;s folder. Every photo is edited to suit its light and lands in one private gallery you
+            share on WhatsApp, within the hour.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/templates"
-              className="rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition hover:opacity-90"
-            >
-              Design your polaroid
+            <Link href="/signup" className="rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition hover:opacity-90">
+              Start your free trial
             </Link>
-            <a
-              href="#how"
-              className="rounded-full border border-line px-6 py-3 text-sm font-semibold transition hover:border-ink"
-            >
-              How it works
-            </a>
+            <Link href="/pricing" className="rounded-full border border-line px-6 py-3 text-sm font-semibold transition hover:border-ink">
+              See pricing
+            </Link>
           </div>
+          <p className="mt-4 text-sm text-muted">Free trial. No card needed.</p>
         </FadeIn>
 
         <div className="relative mx-auto flex h-[24rem] w-full max-w-md items-center justify-center sm:h-[28rem]" aria-hidden>
@@ -116,71 +120,24 @@ export default function Home() {
 
       <section id="how" className="border-t border-line bg-surface/60">
         <div className="mx-auto max-w-6xl px-6 py-20">
-          <h2 className="font-display text-4xl italic sm:text-5xl">How it works</h2>
+          <h2 className="font-display text-4xl italic sm:text-5xl">From card to WhatsApp in three steps</h2>
           <ol className="mt-10 grid gap-6 sm:grid-cols-3">
-            {steps.map((step, index) => (
-              <FadeIn
-                key={step.title}
-                as="li"
-                delay={0.1 * (index + 1)}
-                className="rounded-2xl border border-line bg-surface p-6"
-              >
+            {deliverySteps.map((step, index) => (
+              <FadeIn key={step.title} as="li" delay={0.1 * (index + 1)} className="rounded-2xl border border-line bg-surface p-6">
                 <span className="font-display text-4xl italic text-accent">{index + 1}</span>
                 <h3 className="mt-3 font-semibold">{step.title}</h3>
                 <p className="mt-2 text-sm text-muted">{step.body}</p>
               </FadeIn>
             ))}
           </ol>
+          <p className="mt-8 text-sm text-muted">25 looks, five for each kind of light: from Bright &amp; Airy and Golden Glow to Candlelight, Neon Night and Classic B&amp;W.</p>
         </div>
       </section>
 
       <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="font-display text-4xl italic sm:text-5xl">{TEMPLATES.length} styles. One is yours.</h2>
-            <p className="mt-3 max-w-lg text-muted">
-              From Goan azulejo tiles to a boarding pass for your destination wedding. Every card is
-              5.4 × 8.6 cm, the classic mini polaroid.
-            </p>
-          </div>
-          <Link href="/templates" className="text-sm font-semibold underline underline-offset-4 hover:text-accent">
-            Try them with your names →
-          </Link>
-        </div>
-
-        <ul className="-mx-6 mt-10 flex snap-x gap-5 overflow-x-auto px-6 pb-4 sm:mx-0 sm:flex-wrap sm:justify-center sm:gap-8 sm:overflow-visible sm:px-0">
-          {TEMPLATES.map((template) => (
-            <li key={template.id} className="w-36 shrink-0 snap-start text-center sm:w-40">
-              <Link href="/templates" className="group block">
-                <Card
-                  template={template}
-                  uid={`styles-${template.id}`}
-                  className="mx-auto w-full max-w-[10rem] shadow-md transition group-hover:-translate-y-1 group-hover:shadow-xl"
-                />
-                <p className="mt-3 text-sm font-semibold">{template.name}</p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="border-t border-line bg-surface/60">
-        <div className="mx-auto max-w-6xl px-6 py-20">
-          <h2 className="font-display text-4xl italic sm:text-5xl">Six filters, printed true</h2>
-          <p className="mt-3 max-w-lg text-muted">
-            Warm Goa sunsets, faded film, classic black and white. What you see on your phone is what
-            lands in your hand.
-          </p>
-          <div className="mt-10">
-            <FilterStrip uid="home-filters" />
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <h2 className="font-display text-4xl italic sm:text-5xl">Made easy for the couple</h2>
+        <h2 className="font-display text-4xl italic sm:text-5xl">A gallery guests keep coming back to</h2>
         <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {forCouples.map((item, index) => (
+          {guestFeatures.map((item, index) => (
             <FadeIn key={item.title} as="li" delay={0.08 * index} className="border-t border-ink/15 pt-5">
               <h3 className="font-display text-2xl italic">{item.title}</h3>
               <p className="mt-2 text-sm text-muted">{item.body}</p>
@@ -189,24 +146,73 @@ export default function Home() {
         </ul>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-24">
+      <section className="border-t border-line bg-surface/60">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <h2 className="font-display text-4xl italic sm:text-5xl">Built for studios</h2>
+          <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {forStudios.map((item, index) => (
+              <FadeIn key={item.title} as="li" delay={0.08 * index} className="rounded-2xl border border-line bg-surface p-6">
+                <h3 className="font-semibold">{item.title}</h3>
+                <p className="mt-2 text-sm text-muted">{item.body}</p>
+              </FadeIn>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-20">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="font-display text-4xl italic sm:text-5xl">{TEMPLATES.length} polaroid styles for the live corner</h2>
+            <p className="mt-3 max-w-lg text-muted">
+              The couple picks a style and adds their names, date and colours. Every guest&apos;s photo comes out in it,
+              5.4 × 8.6 cm, the classic mini polaroid.
+            </p>
+          </div>
+          <Link href="/templates" className="text-sm font-semibold underline underline-offset-4 hover:text-accent">
+            Try them with your names →
+          </Link>
+        </div>
+        <ul className="-mx-6 mt-10 flex snap-x gap-5 overflow-x-auto px-6 pb-4 sm:mx-0 sm:flex-wrap sm:justify-center sm:gap-8 sm:overflow-visible sm:px-0">
+          {TEMPLATES.map((template) => (
+            <li key={template.id} className="w-36 shrink-0 snap-start text-center sm:w-40">
+              <Link href="/templates" className="group block">
+                <Card template={template} uid={`styles-${template.id}`} className="mx-auto w-full max-w-[10rem] shadow-md transition group-hover:-translate-y-1 group-hover:shadow-xl" />
+                <p className="mt-3 text-sm font-semibold">{template.name}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-12">
+          <FilterStrip uid="home-filters" />
+        </div>
+      </section>
+
+      <section className="border-t border-line bg-surface/60">
+        <div className="mx-auto max-w-3xl px-6 py-20">
+          <h2 className="font-display text-4xl italic sm:text-5xl">Questions</h2>
+          <dl className="mt-8 divide-y divide-line">
+            {faqs.map((f) => (
+              <div key={f.q} className="py-5">
+                <dt className="font-semibold">{f.q}</dt>
+                <dd className="mt-2 text-sm text-muted">{f.a}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="rounded-3xl bg-ink px-8 py-14 text-center text-paper sm:px-16">
-          <p className="font-display text-4xl italic sm:text-5xl">Let&apos;s make your guests smile.</p>
-          <p className="mx-auto mt-4 max-w-md text-paper/70">
-            Design your polaroid in a minute, then we&apos;ll bring the backdrop.
-          </p>
-          <Link
-            href="/templates"
-            className="mt-8 inline-block rounded-full bg-paper px-6 py-3 text-sm font-semibold text-ink transition hover:opacity-90"
-          >
-            Design your polaroid
+          <p className="font-display text-4xl italic sm:text-5xl">Deliver your next shoot tonight.</p>
+          <p className="mx-auto mt-4 max-w-md text-paper/70">Create your studio in a minute and try it on a real shoot.</p>
+          <Link href="/signup" className="mt-8 inline-block rounded-full bg-paper px-6 py-3 text-sm font-semibold text-ink transition hover:opacity-90">
+            Start your free trial
           </Link>
         </div>
       </section>
 
-      <footer className="mx-auto max-w-6xl px-6 pb-10 text-sm text-muted">
-        <span className="font-display italic">Cute Wedding Polaroid</span> · Goa, India
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

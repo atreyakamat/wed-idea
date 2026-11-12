@@ -20,7 +20,8 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (pathname.startsWith("/g/") || pathname.startsWith("/p/")) {
-    const token = pathname.slice(3);
+    // "/p/<token>" or "/p/<token>/opengraph-image…": check the token part.
+    const token = pathname.slice(3).split("/")[0];
     const pattern = pathname.startsWith("/g/") ? GUEST_TOKEN_PATTERN : PROJECT_TOKEN_PATTERN;
     if (!pattern.test(token)) {
       return new NextResponse("Not found", { status: 404, headers: { "X-Robots-Tag": "noindex" } });

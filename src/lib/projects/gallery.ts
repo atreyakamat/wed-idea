@@ -234,3 +234,24 @@ export async function getProjectGalleryPage(token: string, offset: number): Prom
   const page = await projectPhotoPage(found.supabase, found.project.id, offset, { visibleOnly: true, expiresIn: PUBLIC_SIGNED_URL_SECONDS });
   return { photos: toPublic(page.photos), hasMore: page.hasMore };
 }
+
+
+/**
+ * The cover photo's thumbnail bytes for a gallery's share image. Read
+ * straight from storage (no signed link leaves the server).
+ */
+export async function galleryCoverThumbnail(token: string, photoId: string): Promise<Uint8Array | null> {
+  if (!UUID_PATTERN.test(photoId)) return null;
+  const found = await openProject(token);
+  if (!found) return null;
+  const { data: row } = await found.supabase
+    .from("project_photos")
+    .select("thumb_path, edited_thumb_path")
+    .eq("id", photoId)
+    .eq("project_id", found.project.id)
+    .eq("hidden", false)
+    .maybeSingle<{ thumb_path: string; edited_thumb_path: string | null }>();
+  if (!row) return null;
+  const { data } = await found.supabase.storage.from(PROJECT_BUCKET).download(row.edited_thumb_path ?? row.thumb_path);
+  return data ? new Uint8Array(await data.arrayBuffer()) : null;
+}

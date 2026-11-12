@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { signOut } from "@/app/(auth)/actions";
 import { requireAdmin } from "@/lib/admin/session";
 import { AdminNav, NavLinks } from "./admin-nav";
+import { BRAND_NAME } from "@/lib/brand";
 
 export default function AdminConsoleLayout({ children }: LayoutProps<"/admin">) {
   return (
@@ -11,7 +12,7 @@ export default function AdminConsoleLayout({ children }: LayoutProps<"/admin">) 
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 pt-4 sm:px-6">
           <div className="flex items-center gap-3">
             <Link href="/admin" className="font-display text-xl italic">
-              Cute Wedding Polaroid
+              {BRAND_NAME}
             </Link>
             <span className="rounded-full bg-ink px-2.5 py-0.5 text-xs font-semibold text-paper">Admin</span>
           </div>

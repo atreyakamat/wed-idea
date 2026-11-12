@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Field, FormMessage, initialFormState, SubmitButton } from "@/components/ui/form";
 import { signIn } from "../actions";
 
 const NOTICES: Record<string, string> = {
-  "link-expired": "That link has expired. Sign in, or sign up again for a new one.",
+  "link-expired": "That link has expired. Sign in, or ask for a new link.",
 };
 
 export function LoginForm() {
@@ -20,6 +21,9 @@ export function LoginForm() {
       {notice && !state.error ? <FormMessage state={{ error: notice }} /> : null}
       <Field label="Email" name="email" type="email" autoComplete="email" required defaultValue={state.values?.email} />
       <Field label="Password" name="password" type="password" autoComplete="current-password" required />
+      <Link href="/forgot-password" className="-mt-2 self-end text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
+        Forgot password?
+      </Link>
       <FormMessage state={state} />
       <SubmitButton pendingLabel="Signing in…" className="mt-2">
         Sign in

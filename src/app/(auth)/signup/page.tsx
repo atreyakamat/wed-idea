@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { AuthCard } from "../auth-card";
 import { SignupForm } from "./signup-form";
 
@@ -19,7 +20,10 @@ export default function SignupPage() {
         </>
       }
     >
-      <SignupForm />
+      {/* Reads ?next from the URL (a team invite), so it renders per request. */}
+      <Suspense fallback={null}>
+        <SignupForm />
+      </Suspense>
     </AuthCard>
   );
 }

@@ -1,4 +1,4 @@
-const APP_PREFIXES = ["/dashboard", "/onboarding", "/admin"];
+const APP_PREFIXES = ["/dashboard", "/onboarding", "/admin", "/invite"];
 
 /**
  * Only allows redirects to pages inside the app on this site. Blocks open

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { safeAppRedirect } from "./safe-redirect";
 
 describe("safeAppRedirect", () => {
-  it.each(["/dashboard", "/dashboard/events/123", "/dashboard?tab=design", "/onboarding", "/admin", "/admin/studios/123"])("keeps %s", (path) => {
+  it.each(["/dashboard", "/dashboard/events/123", "/dashboard?tab=design", "/onboarding", "/admin", "/admin/studios/123", "/invite/abc"])("keeps %s", (path) => {
     expect(safeAppRedirect(path)).toBe(path);
   });
 

@@ -1,11 +1,13 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useActionState } from "react";
 import { Field, FormMessage, initialFormState, SubmitButton } from "@/components/ui/form";
 import { signUp } from "../actions";
 
 export function SignupForm() {
   const [state, action] = useActionState(signUp, initialFormState);
+  const params = useSearchParams();
 
   if (state.success) {
     return <FormMessage state={state} />;
@@ -13,6 +15,7 @@ export function SignupForm() {
 
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
+      <input type="hidden" name="next" value={params.get("next") ?? ""} />
       <Field
         label="Email"
         name="email"

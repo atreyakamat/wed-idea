@@ -56,10 +56,13 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
     return { error: null, fieldErrors, values: { email: input.email } };
   }
 
+  // Someone joining through a team invite goes back to it, not to making a studio.
+  const next = safeAppRedirect(formData.get("next"), "/onboarding");
+  const after = next.startsWith("/invite/") ? next : "/onboarding";
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     ...parsed.data,
-    options: { emailRedirectTo: `${publicEnv().NEXT_PUBLIC_SITE_URL}/auth/callback?next=/onboarding` },
+    options: { emailRedirectTo: `${publicEnv().NEXT_PUBLIC_SITE_URL}/auth/callback?next=${encodeURIComponent(after)}` },
   });
 
   if (error) {
@@ -79,7 +82,7 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
     };
   }
 
-  redirect("/onboarding");
+  redirect(after);
 }
 
 const emailOnly = z.object({ email: z.email("Enter a valid email address") });

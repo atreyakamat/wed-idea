@@ -66,6 +66,7 @@ class ProjectSync:
         self.edit = edit or look is not None
         self.look = look
         self.known = api.file_names(project.id)
+        self.style = studio_style(api) if self.edit and not look else {}
         self.failures: dict[str, int] = {}
         self._lock = threading.Lock()
 
@@ -83,7 +84,12 @@ class ProjectSync:
         name = file_name_in_project(self.folder, path)
         if path.suffix.lower() in {".heic", ".heif"} and not HEIC_SUPPORTED:
             raise ApiError('HEIC needs the extra: pip install "cwp-worker[heic]"')
-        prepared = self.prepare(path, edit=self.edit, look=self.look) if self.edit else self.prepare(path)
+        if not self.edit:
+            prepared = self.prepare(path)
+        elif self.style:
+            prepared = self.prepare(path, edit=True, look=self.look, style=self.style)
+        else:
+            prepared = self.prepare(path, edit=True, look=self.look)
         edited = prepared.edited
         reservation = self.api.reserve(self.project.id, edited=edited is not None)
         self.api.put(reservation.full_url, prepared.full)
@@ -146,6 +152,19 @@ class ProjectSync:
         with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
             list(pool.map(run, paths))
         return stats
+
+
+def studio_style(api: Api) -> dict[str, str]:
+    """The studio's favourite look per kind of light, learnt on the website. Empty if unknown."""
+    me = getattr(api, "me", None)
+    if not callable(me):
+        return {}
+    try:
+        style = me().get("style") or {}
+    except Exception:  # noqa: BLE001 - the style is a nice-to-have; never stop an upload for it
+        log.warning("Couldn't load the studio's style; using the standard looks.")
+        return {}
+    return {str(k): str(v) for k, v in style.items() if isinstance(k, str) and isinstance(v, str)}
 
 
 def upload_folder(

@@ -21,3 +21,13 @@ export async function setStudioLogo(path: string | null): Promise<FormState> {
   refresh();
   return { error: null, success: path ? "Logo saved. It now shows on your galleries." : "Logo removed." };
 }
+
+/** Forgets the looks the studio has picked, so new photos start from the standard looks again. */
+export async function resetStudioStyle(): Promise<FormState> {
+  const { studio } = await requireStudioManager();
+  const supabase = await createClient();
+  const { error } = await supabase.from("studio_look_picks").delete().eq("organization_id", studio.id);
+  if (error) return { error: "Couldn't reset your style. Try again." };
+  refresh();
+  return { error: null, success: "Style reset. New photos start from the standard looks." };
+}

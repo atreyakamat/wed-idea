@@ -16,6 +16,23 @@ export function projectPhotoPaths(organizationId: string, projectId: string, pho
   return { full: `${base}.jpg`, thumb: `${base}.thumb.jpg`, editedFull: `${base}.edit.jpg`, editedThumb: `${base}.edit.thumb.jpg` };
 }
 
+/** A re-edit's files carry a version, so no cached copy of an older edit is shown. */
+export const EDIT_VERSION_PATTERN = /^[a-z0-9]{8}$/;
+
+export function newEditVersion(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+/** Where a re-edit of a photo is stored: "<photo>.edit.<version>.jpg" and its thumbnail. */
+export function editVersionPaths(organizationId: string, projectId: string, photoId: string, version: string) {
+  if (!EDIT_VERSION_PATTERN.test(version)) throw new Error("Invalid edit version");
+  const { full } = projectPhotoPaths(organizationId, projectId, photoId);
+  const base = full.slice(0, -".jpg".length);
+  return { full: `${base}.edit.${version}.jpg`, thumb: `${base}.edit.${version}.thumb.jpg` };
+}
+
 /** The five kinds of light the PC app tells apart. */
 export const LIGHTING_GROUPS = ["daylight", "golden", "indoor", "stage", "night"] as const;
 export type LightingGroup = (typeof LIGHTING_GROUPS)[number];

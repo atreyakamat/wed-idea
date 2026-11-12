@@ -125,3 +125,19 @@ def test_a_chosen_look_turns_editing_on(tmp_path, api):
     project, _ = api.ensure_project("x")
     upload_folder(api, project, tmp_path, settled(), wait=lambda s: None, look="honey-film")
     assert api.confirmed[0]["look"] == "honey-film"
+
+
+def test_studio_style_comes_from_the_site_and_never_blocks():
+    from cwp_worker.sync import studio_style
+
+    class WithStyle:
+        def me(self):
+            return {"style": {"golden": "honey-film", "bad": 3}}
+
+    class Broken:
+        def me(self):
+            raise RuntimeError("offline")
+
+    assert studio_style(WithStyle()) == {"golden": "honey-film"}
+    assert studio_style(Broken()) == {}
+    assert studio_style(object()) == {}

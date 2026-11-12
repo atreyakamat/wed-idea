@@ -11,6 +11,7 @@ import { publicEnv } from "@/lib/env";
 import { formatIstDate } from "@/lib/events/time";
 import { PROJECT_KIND_LABELS } from "@/lib/projects/form";
 import { countProjectPhotos, getProject, heartCounts, photosByIds, projectFileNames, projectPhotoPage } from "@/lib/projects/queries";
+import { studioStyle } from "@/lib/projects/review";
 import { projectGalleryUrl, projectShareMessage } from "@/lib/projects/share";
 import { listPlans } from "@/lib/studio/billing";
 import { accessFor, blockedMessage } from "@/lib/studio/status";
@@ -37,12 +38,13 @@ async function Project({ params }: Readonly<{ params: PageProps<"/dashboard/proj
   if (!project) notFound();
 
   const supabase = await createClient();
-  const [counts, firstPage, fileNames, plans, hearts] = await Promise.all([
+  const [counts, firstPage, fileNames, plans, hearts, style] = await Promise.all([
     countProjectPhotos(project.id, supabase),
     projectPhotoPage(supabase, project.id, 0),
     projectFileNames(project.id, supabase),
     listPlans(),
     heartCounts(project.id, supabase),
+    studioStyle(supabase, studio.id),
   ]);
   const loved = await photosByIds(supabase, project.id, hearts.slice(0, 12).map((h) => h.photoId));
   const heartsById = Object.fromEntries(hearts.map((h) => [h.photoId, h.hearts]));
@@ -100,6 +102,11 @@ async function Project({ params }: Readonly<{ params: PageProps<"/dashboard/proj
               {counts.total} uploaded{counts.total !== counts.visible ? `, ${counts.total - counts.visible} hidden from guests` : ""}.
             </p>
           </div>
+          {counts.total ? (
+            <Link href={`/dashboard/projects/${project.id}/review`} className="rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:opacity-90">
+              Review &amp; edit looks
+            </Link>
+          ) : null}
           {plan ? (
             <div className="w-full max-w-xs">
               <UsageMeter label="Photos in this project" used={counts.total} limit={plan.photos_per_event} unit="photos" />
@@ -119,6 +126,7 @@ async function Project({ params }: Readonly<{ params: PageProps<"/dashboard/proj
             organizationId={project.organization_id}
             existingNames={fileNames}
             remaining={plan ? Math.max(0, plan.photos_per_event - counts.total) : null}
+            style={style}
           />
         )}
 

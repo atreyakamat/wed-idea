@@ -131,7 +131,7 @@ def open_upright(path: Path) -> tuple[Image.Image, str | None, Image.Exif]:
     return image, when, exif
 
 
-def prepare(path: Path, edit: bool = False, look: str | None = None, seed: bytes = b"") -> Prepared:
+def prepare(path: Path, edit: bool = False, look: str | None = None, seed: bytes = b"", style: dict[str, str] | None = None) -> Prepared:
     """Reads a photo and makes its web-size JPEG and thumbnail, plus an edited pair when asked."""
     image, when, exif = open_upright(path)
     full, width, height = _encode(image, FULL_LONG_EDGE, FULL_QUALITY)
@@ -141,7 +141,7 @@ def prepare(path: Path, edit: bool = False, look: str | None = None, seed: bytes
     if edit:
         from .looks import edit as edit_image  # numpy is only needed for editing
 
-        result = edit_image(web_size(image), look_id=look, seed=seed or path.name.encode(), exif=exif)
+        result = edit_image(web_size(image), look_id=look, seed=seed or path.name.encode(), exif=exif, preferred=style)
         edited_full, _, _ = _encode(result.image, FULL_LONG_EDGE, FULL_QUALITY)
         edited_thumb, _, _ = _encode(result.image, THUMB_LONG_EDGE, THUMB_QUALITY)
         edited = Edited(full=edited_full, thumb=edited_thumb, lighting=result.lighting.group, look=result.look.id)

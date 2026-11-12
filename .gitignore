@@ -47,3 +47,4 @@ next-env.d.ts
 worker/**/__pycache__/
 worker/**/*.egg-info/
 worker/.pytest_cache/
+/public/vendor/

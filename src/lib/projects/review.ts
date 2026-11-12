@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { UUID_PATTERN } from "@/lib/capture/photos";
 import { isGroup, type Group } from "@/lib/looks/data";
+import type { ShotCheck } from "@/lib/quality/flags";
 import type { StylePrefs } from "@/lib/looks/engine";
 import { EDIT_VERSION_PATTERN, editVersionPaths, LOOK_ID_PATTERN, PROJECT_BUCKET } from "./paths";
 
@@ -16,6 +17,8 @@ export type ReviewItem = {
   look: string | null;
   reviewed: boolean;
   tone: string | null;
+  /** Missed-shot measures, once the photo has been checked. */
+  check: ShotCheck | null;
 };
 
 export type ReviewLinks = { id: string; plainThumb: string; plainFull: string; editedThumb: string | null; editedFull: string | null };
@@ -35,6 +38,7 @@ type Row = {
   look: string | null;
   reviewed_at: string | null;
   tone: string | null;
+  quality: unknown;
   path: string;
   thumb_path: string;
   edited_path: string | null;
@@ -47,7 +51,7 @@ export async function reviewItems(supabase: SupabaseClient, projectId: string): 
   for (let from = 0; from < REVIEW_LIMIT; from += 1000) {
     const { data, error } = await supabase
       .from("project_photos")
-      .select("id, file_name, width, height, hidden, lighting, look, reviewed_at, tone")
+      .select("id, file_name, width, height, hidden, lighting, look, reviewed_at, tone, quality")
       .eq("project_id", projectId)
       .order("taken_at", { ascending: true, nullsFirst: false })
       .order("file_name", { ascending: true })
@@ -65,6 +69,7 @@ export async function reviewItems(supabase: SupabaseClient, projectId: string): 
         look: r.look,
         reviewed: Boolean(r.reviewed_at),
         tone: r.tone,
+        check: parseCheck(r.quality),
       });
     }
     if ((data ?? []).length < 1000) break;
@@ -192,4 +197,37 @@ export async function markReviewed(admin: SupabaseClient, project: { id: string;
     }
   }
   return data?.length ?? 0;
+}
+
+const HEX16 = /^[0-9a-f]{16}$/;
+
+/** A stored or submitted check, if it has the right shape and sane numbers. */
+export function parseCheck(value: unknown): ShotCheck | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const num = (x: unknown, max: number) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= max;
+  const count = (x: unknown) => x === null || (Number.isInteger(x) && (x as number) >= 0 && (x as number) <= 50);
+  if (!num(v.sharpness, 1e6) || !num(v.brightness, 1) || !num(v.clipped, 1) || !num(v.dark, 1)) return null;
+  if (typeof v.dhash !== "string" || !HEX16.test(v.dhash) || !count(v.faces) || !count(v.eyesClosed)) return null;
+  return {
+    sharpness: v.sharpness as number,
+    brightness: v.brightness as number,
+    clipped: v.clipped as number,
+    dark: v.dark as number,
+    dhash: v.dhash,
+    faces: (v.faces as number | null) ?? 0,
+    eyesClosed: (v.eyesClosed as number | null) ?? 0,
+  };
+}
+
+/** Saves checks for a few photos of a project. Returns how many were saved. */
+export async function saveChecks(admin: SupabaseClient, projectId: string, checks: { photoId: string; check: unknown }[]): Promise<number> {
+  let saved = 0;
+  for (const { photoId, check } of checks.slice(0, 50)) {
+    const parsed = UUID_PATTERN.test(photoId) ? parseCheck(check) : null;
+    if (!parsed) continue;
+    const { error } = await admin.from("project_photos").update({ quality: parsed, checked_at: new Date().toISOString() }).eq("id", photoId).eq("project_id", projectId);
+    if (!error) saved++;
+  }
+  return saved;
 }

@@ -37,6 +37,7 @@ export type ProjectPhoto = {
   originalUrl: string | null;
   lighting: LightingGroup | null;
   look: string | null;
+  tone: string | null;
 };
 
 const PROJECT_COLUMNS =
@@ -151,6 +152,7 @@ type PhotoRow = {
   edited_thumb_path: string | null;
   lighting: LightingGroup | null;
   look: string | null;
+  tone: string | null;
   width: number;
   height: number;
   hidden: boolean;
@@ -168,7 +170,7 @@ export async function projectPhotoPage(
 ): Promise<{ photos: ProjectPhoto[]; hasMore: boolean }> {
   let query = supabase
     .from("project_photos")
-    .select("id, file_name, path, thumb_path, edited_path, edited_thumb_path, lighting, look, width, height, hidden")
+    .select("id, file_name, path, thumb_path, edited_path, edited_thumb_path, lighting, look, tone, width, height, hidden")
     .eq("project_id", projectId)
     .order("taken_at", { ascending: true, nullsFirst: false })
     .order("file_name", { ascending: true })
@@ -188,7 +190,7 @@ export async function projectPhotoPage(
     const fullUrl = urlFor.get(p.edited_path ?? p.path);
     const originalUrl = p.edited_path ? (urlFor.get(p.path) ?? null) : null;
     if (!thumbUrl || !fullUrl) return [];
-    return [{ id: p.id, fileName: p.file_name, width: p.width, height: p.height, hidden: p.hidden, thumbUrl, fullUrl, originalUrl, lighting: p.lighting, look: p.look }];
+    return [{ id: p.id, fileName: p.file_name, width: p.width, height: p.height, hidden: p.hidden, thumbUrl, fullUrl, originalUrl, lighting: p.lighting, look: p.look, tone: p.tone }];
   });
   return { photos, hasMore: (data?.length ?? 0) > limit };
 }
@@ -202,7 +204,11 @@ export type NewProjectPhoto = {
   takenAt: string | null;
   /** Set when the PC app also uploaded an auto-edited version. */
   edit?: { lighting: LightingGroup; look: string } | null;
+  /** Average colour "#rrggbb", shown while the photo loads. */
+  tone?: string | null;
 };
+
+export const TONE_PATTERN = /^#[0-9a-f]{6}$/;
 
 export type RecordResult = { ok: true; duplicate?: boolean } | { ok: false; error: string; status?: number };
 
@@ -215,6 +221,7 @@ export function validateNewPhoto(input: NewProjectPhoto): string | null {
   }
   if (input.bytes !== null && (!Number.isInteger(input.bytes) || input.bytes < 0)) return "Invalid file size.";
   if (input.takenAt !== null && Number.isNaN(Date.parse(input.takenAt))) return "Invalid capture time.";
+  if (input.tone != null && (typeof input.tone !== "string" || !TONE_PATTERN.test(input.tone))) return "Invalid tone.";
   if (input.edit) {
     if (!(LIGHTING_GROUPS as readonly string[]).includes(input.edit.lighting)) return "Unknown lighting.";
     if (typeof input.edit.look !== "string" || !LOOK_ID_PATTERN.test(input.edit.look) || input.edit.look.length > 40) return "Unknown look.";
@@ -261,6 +268,7 @@ export async function recordProjectPhoto(
     bytes: input.bytes,
     taken_at: input.takenAt,
     source,
+    tone: input.tone ?? null,
     ...(input.edit ? { edited_path: paths.editedFull, edited_thumb_path: paths.editedThumb, lighting: input.edit.lighting, look: input.edit.look } : {}),
   });
   if (!error) return { ok: true };
@@ -281,3 +289,40 @@ export async function recordProjectPhoto(
 
 /** HTTP status for each kind of database refusal. 403 and 409 tell the PC app to stop. */
 const REFUSAL_STATUS: Record<string, number> = { plan_limit: 403, studio_access: 403, project_rule: 409 };
+
+
+/** How many guests ❤ each photo of a project, most loved first. */
+export async function heartCounts(projectId: string, client?: SupabaseClient): Promise<{ photoId: string; hearts: number }[]> {
+  const supabase = client ?? (await createClient());
+  const { data, error } = await supabase.rpc("project_heart_counts", { p_project: projectId });
+  if (error) return [];
+  return ((data ?? []) as { photo_id: string; hearts: number | string }[])
+    .map((r) => ({ photoId: r.photo_id, hearts: Number(r.hearts) }))
+    .sort((a, b) => b.hearts - a.hearts);
+}
+
+/** Specific photos of a project, signed, in the order given. */
+export async function photosByIds(supabase: SupabaseClient, projectId: string, ids: string[]): Promise<ProjectPhoto[]> {
+  const wanted = ids.filter((id) => UUID_PATTERN.test(id)).slice(0, 200);
+  if (!wanted.length) return [];
+  const { data } = await supabase
+    .from("project_photos")
+    .select("id, file_name, path, thumb_path, edited_path, edited_thumb_path, lighting, look, tone, width, height, hidden")
+    .eq("project_id", projectId)
+    .in("id", wanted)
+    .overrideTypes<PhotoRow[], { merge: false }>();
+  const rows = data ?? [];
+  const paths = rows.flatMap((p) => [p.edited_thumb_path ?? p.thumb_path, p.edited_path ?? p.path]);
+  const signed = paths.length ? await supabase.storage.from(PROJECT_BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS) : { data: [] };
+  const urlFor = new Map((signed.data ?? []).map((x) => [x.path, x.signedUrl]));
+  const byId = new Map(
+    rows.flatMap((p) => {
+      const thumbUrl = urlFor.get(p.edited_thumb_path ?? p.thumb_path);
+      const fullUrl = urlFor.get(p.edited_path ?? p.path);
+      return thumbUrl && fullUrl
+        ? [[p.id, { id: p.id, fileName: p.file_name, width: p.width, height: p.height, hidden: p.hidden, thumbUrl, fullUrl, originalUrl: null, lighting: p.lighting, look: p.look, tone: p.tone }] as const]
+        : [];
+    }),
+  );
+  return wanted.flatMap((id) => (byId.has(id) ? [byId.get(id) as ProjectPhoto] : []));
+}

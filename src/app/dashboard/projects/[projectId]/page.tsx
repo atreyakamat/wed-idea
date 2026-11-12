@@ -10,7 +10,7 @@ import { isGalleryOpen } from "@/lib/capture/photos";
 import { publicEnv } from "@/lib/env";
 import { formatIstDate } from "@/lib/events/time";
 import { PROJECT_KIND_LABELS } from "@/lib/projects/form";
-import { countProjectPhotos, getProject, projectFileNames, projectPhotoPage } from "@/lib/projects/queries";
+import { countProjectPhotos, getProject, heartCounts, photosByIds, projectFileNames, projectPhotoPage } from "@/lib/projects/queries";
 import { projectGalleryUrl, projectShareMessage } from "@/lib/projects/share";
 import { listPlans } from "@/lib/studio/billing";
 import { accessFor, blockedMessage } from "@/lib/studio/status";
@@ -37,12 +37,16 @@ async function Project({ params }: Readonly<{ params: PageProps<"/dashboard/proj
   if (!project) notFound();
 
   const supabase = await createClient();
-  const [counts, firstPage, fileNames, plans] = await Promise.all([
+  const [counts, firstPage, fileNames, plans, hearts] = await Promise.all([
     countProjectPhotos(project.id, supabase),
     projectPhotoPage(supabase, project.id, 0),
     projectFileNames(project.id, supabase),
     listPlans(),
+    heartCounts(project.id, supabase),
   ]);
+  const loved = await photosByIds(supabase, project.id, hearts.slice(0, 12).map((h) => h.photoId));
+  const heartsById = Object.fromEntries(hearts.map((h) => [h.photoId, h.hearts]));
+  const guestsWhoLoved = hearts.reduce((n, h) => n + h.hearts, 0);
   const plan = plans.find((p) => p.id === studio.planId);
   const manager = canManage(studio.role);
   const blocked = blockedMessage(accessFor(studio));
@@ -118,7 +122,25 @@ async function Project({ params }: Readonly<{ params: PageProps<"/dashboard/proj
           />
         )}
 
-        <PhotoGrid key={`${counts.total}-${counts.visible}`} projectId={project.id} initial={firstPage} canDelete={manager} />
+        {loved.length ? (
+          <div className="rounded-2xl border border-line bg-surface p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-semibold">Most loved by guests</h3>
+              <p className="text-sm text-muted">{guestsWhoLoved} ❤ so far. Good picks for the album.</p>
+            </div>
+            <ul className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-12">
+              {loved.map((p) => (
+                <li key={p.id} className="relative aspect-square overflow-hidden rounded-lg" style={{ backgroundColor: p.tone ?? "var(--line)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
+                  <img src={p.thumbUrl} alt={p.fileName} loading="lazy" className="h-full w-full object-cover" />
+                  <span className="absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[11px] font-semibold text-white">♥ {heartsById[p.id]}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <PhotoGrid key={`${counts.total}-${counts.visible}`} projectId={project.id} initial={firstPage} canDelete={manager} hearts={heartsById} />
       </section>
 
       {manager ? (

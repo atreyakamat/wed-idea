@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import type { StudioStatus } from "@/lib/auth";
 import { UUID_PATTERN } from "@/lib/capture/photos";
 import { accessFor, blockedMessage } from "@/lib/studio/status";
+import { allow } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bearerToken, hashWorkerToken } from "./worker-token";
 
@@ -45,11 +46,15 @@ export async function authenticateWorker(request: Request): Promise<WorkerSessio
   const token = bearerToken(request.headers.get("authorization"));
   if (!token) return jsonError(401, "Missing or malformed token. Run `cwp-worker login` again.");
 
+  const hash = hashWorkerToken(token);
+  // ~20 calls a second per computer is far above any real upload pace.
+  if (!(await allow(`worker:${hash.slice(0, 32)}`, 1200, 60))) return jsonError(429, "Too many requests. Slow down and try again in a minute.");
+
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("worker_tokens")
     .select("id, name, last_used_at, organizations (id, name, status, trial_ends_at, paid_until, plan_id)")
-    .eq("token_hash", hashWorkerToken(token))
+    .eq("token_hash", hash)
     .is("revoked_at", null)
     .maybeSingle<TokenRow>();
   if (error) return jsonError(500, "Couldn't check the token. Try again.");

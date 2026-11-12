@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { FormState } from "@/components/ui/form";
 import { publicEnv } from "@/lib/env";
 import { adminNext } from "@/lib/admin/next";
+import { allow, clientIp } from "@/lib/rate-limit";
 import { safeAppRedirect } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
@@ -79,6 +80,55 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
   }
 
   redirect("/onboarding");
+}
+
+const emailOnly = z.object({ email: z.email("Enter a valid email address") });
+
+/**
+ * Sends a password reset link. Always answers the same way, so the form
+ * doesn't reveal which emails have accounts.
+ */
+export async function requestPasswordReset(_prev: FormState, formData: FormData): Promise<FormState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const parsed = emailOnly.safeParse({ email });
+  if (!parsed.success) return { error: null, fieldErrors: { email: "Enter a valid email address" }, values: { email } };
+
+  const ip = await clientIp();
+  const allowed = (await allow(`reset:ip:${ip}`, 10, 3600)) && (await allow(`reset:email:${parsed.data.email}`, 3, 3600));
+  if (!allowed) return { error: "Too many reset requests. Try again in an hour, or check your inbox for the last link.", values: { email } };
+
+  const supabase = await createClient();
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${publicEnv().NEXT_PUBLIC_SITE_URL}/auth/callback?next=/reset-password`,
+  });
+  return {
+    error: null,
+    success: `If ${parsed.data.email} has an account, a reset link is on its way. It works for one hour.`,
+    values: { email },
+  };
+}
+
+const newPassword = z
+  .object({ password: z.string().min(8, "Use at least 8 characters").max(200), confirm: z.string() })
+  .refine((v) => v.password === v.confirm, { message: "The passwords don't match", path: ["confirm"] });
+
+/** Sets a new password for the account signed in through a reset link. */
+export async function resetPassword(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = newPassword.safeParse({ password: String(formData.get("password") ?? ""), confirm: String(formData.get("confirm") ?? "") });
+  if (!parsed.success) {
+    const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
+    return { error: null, fieldErrors };
+  }
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) return { error: "Your reset link has expired. Ask for a new one." };
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  if (error) {
+    const same = error.code === "same_password";
+    const weak = error.code === "weak_password";
+    return { error: same ? "Choose a password you haven't used here before." : weak ? "Choose a stronger password." : "Couldn't save the password. Try again." };
+  }
+  redirect("/dashboard");
 }
 
 export async function signOut() {

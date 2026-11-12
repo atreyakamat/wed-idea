@@ -193,7 +193,11 @@ function GuestStep({
           <label className="flex items-start gap-3 rounded-xl bg-line/40 p-3 text-sm">
             <input type="checkbox" name="consent" className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--ink)]" />
             <span>
-              The guest agrees to get their photos on WhatsApp, and for us to keep them until {keepUntil}.
+              The guest agrees to get their photos on WhatsApp, and for us to keep them until {keepUntil}. Their number is
+              used only for this.{" "}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                Privacy
+              </a>
               {state.fieldErrors?.consent ? <span className="mt-1 block text-xs text-danger">{state.fieldErrors.consent}</span> : null}
             </span>
           </label>

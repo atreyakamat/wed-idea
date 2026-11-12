@@ -4,6 +4,7 @@ import { useActionState, useMemo } from "react";
 import { Field, FormMessage, initialFormState, SubmitButton } from "@/components/ui/form";
 import type { Plan } from "@/lib/studio/billing";
 import { updatePlan } from "./actions";
+import { BRAND_NAME } from "@/lib/brand";
 
 export function PlanEditor({ plan, studios }: Readonly<{ plan: Plan; studios: number }>) {
   const action = useMemo(() => updatePlan.bind(null, plan.id, plan.is_trial), [plan.id, plan.is_trial]);
@@ -38,7 +39,7 @@ export function PlanEditor({ plan, studios }: Readonly<{ plan: Plan; studios: nu
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="remove_branding" defaultChecked={plan.remove_branding} className="h-4 w-4 accent-[var(--ink)]" />
-        Remove the Cute Wedding Polaroid credit from guest galleries
+        Remove the {BRAND_NAME} credit from guest galleries
       </label>
       <FormMessage state={state} />
       <SubmitButton pendingLabel="Saving…">Save {plan.name}</SubmitButton>

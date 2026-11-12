@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { listStudios, requireUser } from "@/lib/auth";
 import { StudioForm } from "./studio-form";
+import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata: Metadata = { title: "Set up your studio", robots: { index: false, follow: false } };
 
@@ -10,7 +11,7 @@ export default function OnboardingPage() {
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
-        <p className="font-display text-xl italic">Cute Wedding Polaroid</p>
+        <p className="font-display text-xl italic">{BRAND_NAME}</p>
         <div className="mt-6 rounded-2xl border border-line bg-surface p-8 shadow-sm">
           <p className="text-sm font-medium uppercase tracking-widest text-accent">Step 1 of 1</p>
           <h1 className="mt-2 font-display text-3xl italic">Set up your studio</h1>

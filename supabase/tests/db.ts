@@ -27,7 +27,7 @@ create function auth.role() returns text language sql stable as
   $$ select auth.jwt() ->> 'role' $$;
 create schema storage;
 create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, metadata jsonb);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, metadata jsonb, created_at timestamptz default now());
 alter table storage.objects enable row level security;
 grant usage on schema public, auth, storage to anon, authenticated;
 grant execute on function auth.uid(), auth.jwt(), auth.role() to anon, authenticated;
@@ -39,14 +39,13 @@ export type Aal = "aal1" | "aal2";
 export async function openTestDb() {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(SUPABASE_STUBS);
+  // Supabase grants table privileges to these roles as each table is created
+  // (RLS then filters rows), so a migration can still revoke them.
+  await db.exec(`alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated;`);
   for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort()) {
     await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
   }
-  // Supabase grants table privileges to these roles; RLS then filters rows.
-  await db.exec(`
-    grant select, insert, update, delete on all tables in schema public to anon, authenticated;
-    grant select, insert, update, delete on storage.objects to authenticated;
-  `);
+  await db.exec(`grant select, insert, update, delete on storage.objects to authenticated;`);
 
   /** Runs SQL as a user, like a PostgREST request with that user's JWT. */
   async function as<T>(role: Role, uid: string | null, sql: string, aal: Aal = "aal1") {

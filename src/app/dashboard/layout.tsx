@@ -6,6 +6,7 @@ import { StudioBanner } from "@/components/dashboard/studio-banner";
 import { requireStudio } from "@/lib/auth";
 import { studioNotice } from "@/lib/studio/status";
 import { signOut } from "../(auth)/actions";
+import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · Dashboard" },
@@ -19,7 +20,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="font-display text-xl italic">
-              Cute Wedding Polaroid
+              {BRAND_NAME}
             </Link>
             <Suspense fallback={null}>
               <StudioName />

@@ -5,6 +5,7 @@ import { PolaroidCard } from "@/components/polaroid/polaroid-card";
 import { SAMPLE_PHOTO, SAMPLE_TEXT } from "@/lib/polaroid/samples";
 import { TEMPLATES } from "@/lib/polaroid/templates";
 import { TemplatePlayground } from "./template-playground";
+import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "Polaroid templates",
@@ -17,7 +18,7 @@ export default function TemplatesPage() {
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-12 sm:px-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-display text-lg italic text-accent">Cute Wedding Polaroid</p>
+          <p className="font-display text-lg italic text-accent">{BRAND_NAME}</p>
           <h1 className="mt-1 font-display text-4xl italic sm:text-5xl">Polaroid templates</h1>
           <p className="mt-3 max-w-xl text-muted">
             Mini polaroids, 5.4 × 8.6 cm. Pick a style, type the couple&apos;s names and play with the

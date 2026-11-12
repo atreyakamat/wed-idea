@@ -8,10 +8,11 @@ import { requireAdminUser } from "@/lib/admin/session";
 import { formText } from "@/lib/form-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { BRAND_NAME } from "@/lib/brand";
 
 export type EnrolState = { error: string | null; factorId?: string; qrCode?: string; secret?: string };
 
-const FRIENDLY_NAME = "Cute Wedding Polaroid admin";
+const FRIENDLY_NAME = `${BRAND_NAME} admin`;
 const SETUP_CLOSED = "Authenticator setup is closed. Reopen it in SQL (see the README), then try again within the hour.";
 
 /**
@@ -33,7 +34,7 @@ export async function beginEnrolment(): Promise<EnrolState> {
     if (factor.status === "unverified") await supabase.auth.mfa.unenroll({ factorId: factor.id });
   }
 
-  const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: FRIENDLY_NAME, issuer: "Cute Wedding Polaroid" });
+  const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: FRIENDLY_NAME, issuer: BRAND_NAME });
   if (error) return { error: "Couldn't start setup. Try again." };
   return { error: null, factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
 }

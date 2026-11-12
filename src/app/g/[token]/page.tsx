@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BRAND_NAME } from "@/lib/brand";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -77,12 +78,16 @@ async function Gallery({ params }: Readonly<{ params: PageProps<"/g/[token]">["p
       ) : null}
 
       <footer className="mt-16 text-center text-xs text-muted">
-        Only people with this link can see these photos.
+        Only people with this link can see these photos.{" "}
+        <Link href="/privacy" className="underline-offset-4 hover:underline">
+          Privacy
+        </Link>
+        .
         {gallery.showBranding ? (
           <>
             {" "}
             <Link href="/" className="font-display italic underline-offset-4 hover:underline">
-              Cute Wedding Polaroid
+              {BRAND_NAME}
             </Link>
           </>
         ) : null}

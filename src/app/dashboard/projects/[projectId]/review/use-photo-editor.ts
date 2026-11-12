@@ -41,7 +41,7 @@ export function usePhotoEditor(item: ReviewItem | null, links: ReviewLinks | nul
   useEffect(() => {
     if (!photoId || !plainFull || !plainThumb) return;
     const abort = new AbortController();
-    (async () => {
+    void (async () => {
       try {
         const [preview, small] = await Promise.all([decodeUrl(plainFull, previewEdge(), abort.signal), decodeUrl(plainThumb, SWATCH_EDGE, abort.signal)]);
         const plan = await planPhoto(preview, { group: storedGroup, style });

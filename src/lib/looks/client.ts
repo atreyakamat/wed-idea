@@ -33,7 +33,8 @@ function pool(): Slot[] {
 type Request = WorkerRequest extends infer R ? (R extends { id: number } ? Omit<R, "id"> : never) : never;
 
 function send(request: Request): Promise<WorkerReply> {
-  const slot = pool().reduce((a, b) => (b.busy < a.busy ? b : a));
+  const slots = pool();
+  const slot = slots.reduce((a, b) => (b.busy < a.busy ? b : a), slots[0]);
   const id = nextId++;
   slot.busy++;
   return new Promise((resolve) => {

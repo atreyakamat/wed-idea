@@ -147,7 +147,8 @@ export function plan(image: Rgb, options: { lookId?: string; group?: Group; styl
   if (!options.style?.[lighting.group] && lighting.familyConfidence < DATA.unsureFamily) {
     return { features, lighting, look: getLook(DATA.defaultLook[lighting.group]), strength: DATA.unsureStrength, scores };
   }
-  const best = Object.keys(scores).reduce((a, b) => (scores[b] > scores[a] ? b : a));
+  const ids = Object.keys(scores);
+  const best = ids.reduce((a, b) => (scores[b] > scores[a] ? b : a), ids[0]);
   return { features, lighting, look: getLook(best), strength: 1, scores };
 }
 

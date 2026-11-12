@@ -35,6 +35,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
       height: Number(body.height),
       bytes: nullableNumber(body.bytes),
       takenAt: nullableString(body.takenAt),
+      tone: nullableString(body.tone),
       edit: body.edited === true ? { lighting: (typeof body.lighting === "string" ? body.lighting : "") as LightingGroup, look: typeof body.look === "string" ? body.look : "" } : null,
     },
     "worker",

@@ -96,6 +96,8 @@ class ProjectSync:
             "bytes": path.stat().st_size,
             "takenAt": prepared.taken_at or _modified_at(path),
         }
+        if prepared.tone:
+            photo["tone"] = prepared.tone
         if edited:
             if not (reservation.edited_full_url and reservation.edited_thumb_url):
                 raise ApiError("The server didn't return upload links for the edited photo. Update the app.")

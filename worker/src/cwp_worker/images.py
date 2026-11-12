@@ -51,6 +51,7 @@ class Prepared:
     height: int
     taken_at: str | None
     edited: Edited | None = None
+    tone: str | None = None  # average colour, "#rrggbb", shown while the photo loads
 
 
 def fit_within(width: int, height: int, long_edge: int) -> tuple[int, int]:
@@ -103,6 +104,12 @@ def _encode(image: Image.Image, long_edge: int, quality: int) -> tuple[bytes, in
     return out.getvalue(), width, height
 
 
+def average_tone(image: Image.Image) -> str:
+    """The photo's average colour as "#rrggbb"."""
+    r, g, b = image.convert("RGB").resize((1, 1), Image.Resampling.BOX).getpixel((0, 0))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def web_size(image: Image.Image, long_edge: int = FULL_LONG_EDGE) -> Image.Image:
     width, height = fit_within(image.width, image.height, long_edge)
     return image if (width, height) == image.size else image.resize((width, height), Image.Resampling.LANCZOS)
@@ -130,6 +137,7 @@ def prepare(path: Path, edit: bool = False, look: str | None = None, seed: bytes
     full, width, height = _encode(image, FULL_LONG_EDGE, FULL_QUALITY)
     thumb, _, _ = _encode(image, THUMB_LONG_EDGE, THUMB_QUALITY)
     edited = None
+    shown = image
     if edit:
         from .looks import edit as edit_image  # numpy is only needed for editing
 
@@ -137,4 +145,5 @@ def prepare(path: Path, edit: bool = False, look: str | None = None, seed: bytes
         edited_full, _, _ = _encode(result.image, FULL_LONG_EDGE, FULL_QUALITY)
         edited_thumb, _, _ = _encode(result.image, THUMB_LONG_EDGE, THUMB_QUALITY)
         edited = Edited(full=edited_full, thumb=edited_thumb, lighting=result.lighting.group, look=result.look.id)
-    return Prepared(full=full, thumb=thumb, width=width, height=height, taken_at=when, edited=edited)
+        shown = result.image
+    return Prepared(full=full, thumb=thumb, width=width, height=height, taken_at=when, edited=edited, tone=average_tone(shown))

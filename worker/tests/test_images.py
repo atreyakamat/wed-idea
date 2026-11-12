@@ -43,3 +43,10 @@ def test_parse_exif_time():
     assert parse_exif_time("0000:00:00 00:00:00") is None
     assert parse_exif_time("garbage") is None
     assert parse_exif_time(None) is None
+
+
+def test_prepare_records_the_average_tone(tmp_path):
+    p = prepare(make_jpeg(tmp_path / "a.jpg", size=(400, 300)))
+    assert p.tone is not None and len(p.tone) == 7 and p.tone.startswith("#")
+    r, g, b = (int(p.tone[i : i + 2], 16) for i in (1, 3, 5))
+    assert abs(r - 200) < 20 and abs(g - 120) < 20 and abs(b - 90) < 20

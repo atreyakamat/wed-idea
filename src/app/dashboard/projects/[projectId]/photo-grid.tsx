@@ -10,9 +10,11 @@ type Props = {
   projectId: string;
   initial: { photos: ProjectPhoto[]; hasMore: boolean };
   canDelete: boolean;
+  /** Guests' ❤ per photo id. */
+  hearts?: Record<string, number>;
 };
 
-export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
+export function PhotoGrid({ projectId, initial, canDelete, hearts = {} }: Readonly<Props>) {
   const [photos, setPhotos] = useState(initial.photos);
   const [hasMore, setHasMore] = useState(initial.hasMore);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -127,7 +129,11 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
         {photos.map((photo) => {
           const isSelected = selected.has(photo.id);
           return (
-            <li key={photo.id} className={`group relative aspect-square overflow-hidden rounded-lg bg-line/50 ${isSelected ? "ring-2 ring-ink ring-offset-2 ring-offset-paper" : ""}`}>
+            <li
+              key={photo.id}
+              className={`group relative aspect-square overflow-hidden rounded-lg bg-line/50 ${isSelected ? "ring-2 ring-ink ring-offset-2 ring-offset-paper" : ""}`}
+              style={photo.tone ? { backgroundColor: photo.tone } : undefined}
+            >
               <button type="button" onClick={() => open(photo)} className="block h-full w-full" aria-label={`View ${photo.fileName}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
                 <img src={photo.thumbUrl} alt="" loading="lazy" className={`h-full w-full object-cover transition ${photo.hidden ? "opacity-35 grayscale" : ""}`} />
@@ -136,6 +142,11 @@ export function PhotoGrid({ projectId, initial, canDelete }: Readonly<Props>) {
                 <input type="checkbox" checked={isSelected} onChange={() => toggle(photo.id)} className="h-4 w-4 accent-ink" aria-label={`Select ${photo.fileName}`} />
               </label>
               {photo.hidden ? <span className="absolute bottom-1.5 left-1.5 rounded-full bg-ink/80 px-2 py-0.5 text-[11px] font-medium text-paper">Hidden</span> : null}
+              {hearts[photo.id] ? (
+                <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[11px] font-semibold text-white" aria-label={`${hearts[photo.id]} guests love this`}>
+                  ♥ {hearts[photo.id]}
+                </span>
+              ) : null}
               {photo.look ? (
                 <span className="pointer-events-none absolute bottom-1.5 right-1.5 hidden rounded-full bg-paper/90 px-2 py-0.5 text-[11px] font-medium text-ink group-hover:inline">
                   {lookName(photo.look)}

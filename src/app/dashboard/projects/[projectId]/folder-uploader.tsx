@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { processImage } from "@/lib/capture/process-image";
 import { EXIF_SCAN_BYTES, readTakenAt } from "@/lib/projects/exif";
+import { averageTone } from "@/lib/projects/tone";
 import { isPhotoFile, needsPcApp, PROJECT_BUCKET, projectFileName, projectPhotoPaths } from "@/lib/projects/paths";
 import { createClient } from "@/lib/supabase/client";
 import { discardUpload, saveProjectPhoto } from "../actions";
@@ -92,6 +93,7 @@ export function FolderUploader({ projectId, organizationId, existingNames, remai
     try {
       const [photo, taken] = await Promise.all([processImage(item.file), takenAt(item.file)]);
       URL.revokeObjectURL(photo.previewUrl);
+      const tone = await averageTone(photo.thumb);
       const paths = projectPhotoPaths(organizationId, projectId, photoId);
       const bucket = createClient().storage.from(PROJECT_BUCKET);
       const [full, thumb] = await Promise.all([bucket.upload(paths.full, photo.full, UPLOAD_OPTIONS), bucket.upload(paths.thumb, photo.thumb, UPLOAD_OPTIONS)]);
@@ -105,6 +107,7 @@ export function FolderUploader({ projectId, organizationId, existingNames, remai
         height: photo.height,
         bytes: item.file.size,
         takenAt: taken ?? (item.file.lastModified ? new Date(item.file.lastModified).toISOString() : null),
+        tone,
       });
       if (!saved.ok) {
         // A plan or access refusal applies to every file left: stop the run.

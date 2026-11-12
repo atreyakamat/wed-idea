@@ -5,7 +5,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { formatIstDate } from "@/lib/events/time";
 import { getProjectGallery } from "@/lib/projects/gallery";
-import { ProjectGalleryGrid } from "./gallery-grid";
+import { GalleryView } from "./gallery-view";
 
 // The link is the key to the photos: keep it out of search engines and never
 // send it to other sites in the Referer header.
@@ -45,25 +45,44 @@ async function Gallery({ params }: Readonly<{ params: PageProps<"/p/[token]">["p
     );
   }
 
+  const date = gallery.shootDate ? formatIstDate(`${gallery.shootDate}T12:00:00+05:30`) : null;
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-      <header className="text-center">
-        <p className="font-display text-lg italic text-accent">{gallery.studioName}</p>
-        <h1 className="mt-2 font-display text-4xl italic sm:text-5xl">{gallery.projectName}</h1>
-        <p className="mx-auto mt-3 max-w-md text-muted">
-          {gallery.photoCount} photo{gallery.photoCount === 1 ? "" : "s"}
-          {gallery.shootDate ? ` · ${formatIstDate(`${gallery.shootDate}T12:00:00+05:30`)}` : ""}. Tap one to see it full size and save it.
-        </p>
-        <p className="mt-4 inline-block rounded-full bg-line/70 px-4 py-1.5 text-xs font-medium text-muted">
-          Available until {formatIstDate(gallery.expiresAt)}
+    <div className="px-4 sm:px-6" style={{ paddingLeft: "max(16px, env(safe-area-inset-left))", paddingRight: "max(16px, env(safe-area-inset-right))" }}>
+      <header className="mx-auto flex max-w-6xl flex-col items-center pt-8 text-center sm:pt-12">
+        {gallery.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- studio logo from public storage
+          <img src={gallery.logoUrl} alt={gallery.studioName} className="h-12 w-auto max-w-[220px] object-contain sm:h-14" />
+        ) : (
+          <p className="font-display text-xl italic text-accent">{gallery.studioName}</p>
+        )}
+        {gallery.cover ? (
+          <div
+            className="relative mt-6 w-full overflow-hidden rounded-2xl sm:mt-8 sm:rounded-3xl"
+            style={{ aspectRatio: gallery.cover.width >= gallery.cover.height ? "16 / 9" : "4 / 5", maxHeight: "70vh", backgroundColor: gallery.cover.tone ?? "var(--line)" }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
+            <img src={gallery.cover.fullUrl} alt="" className="absolute inset-0 h-full w-full object-cover" fetchPriority="high" />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent px-5 pb-6 pt-24 text-left text-white sm:px-10 sm:pb-10">
+              <h1 className="font-display text-4xl italic leading-tight sm:text-6xl">{gallery.projectName}</h1>
+              <p className="mt-2 text-sm text-white/85 sm:text-base">
+                {gallery.photoCount} photo{gallery.photoCount === 1 ? "" : "s"}
+                {date ? ` · ${date}` : ""}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <h1 className="mt-4 font-display text-4xl italic sm:text-5xl">{gallery.projectName}</h1>
+        )}
+        <p className="mt-5 max-w-md text-sm text-muted">
+          Tap a photo to see it full size. ❤ the ones you love, and save any to your phone. Available until {formatIstDate(gallery.expiresAt)}.
         </p>
       </header>
 
-      <div className="mt-10">
-        <ProjectGalleryGrid token={token} initial={{ photos: gallery.photos, hasMore: gallery.hasMore }} total={gallery.photoCount} />
+      <div className="mt-6">
+        <GalleryView token={token} projectName={gallery.projectName} initial={{ photos: gallery.photos, hasMore: gallery.hasMore }} total={gallery.photoCount} />
       </div>
 
-      <footer className="mt-16 text-center text-xs text-muted">
+      <footer className="mx-auto mt-10 max-w-6xl pb-12 text-center text-xs text-muted">
         Only people with this link can see these photos.
         {gallery.showBranding ? (
           <>

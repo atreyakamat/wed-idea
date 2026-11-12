@@ -82,7 +82,12 @@ jobs:
         run: |
           mkdir -p dist-installer
           name="CuteWeddingPolaroid-Mac-${{ matrix.target == 'mac-intel' && 'Intel' || 'AppleSilicon' }}.dmg"
-          hdiutil create -volname "Cute Wedding Polaroid" -srcfolder "dist/Cute Wedding Polaroid.app" -ov -format UDZO "dist-installer/$name"
+          # hdiutil sometimes fails with "Resource busy" on GitHub's Macs: try again.
+          for attempt in 1 2 3 4 5; do
+            hdiutil create -volname "Cute Wedding Polaroid" -srcfolder "dist/Cute Wedding Polaroid.app" -ov -format UDZO "dist-installer/$name" && break
+            [ "$attempt" = 5 ] && exit 1
+            sleep $((attempt * 5))
+          done
           ls -la dist-installer
 
       - uses: actions/upload-artifact@v4

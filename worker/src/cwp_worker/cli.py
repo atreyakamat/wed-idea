@@ -233,7 +233,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _safe_output() -> None:
+    """Windows consoles may not be UTF-8: print "→" and "·" as best they can instead of crashing."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(errors="replace")
+            except (ValueError, OSError):  # pragma: no cover - stream already in use in an odd way
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _safe_output()
     # The installed app (a frozen build) opens its window when started with no arguments.
     if argv is None and getattr(sys, "frozen", False) and len(sys.argv) == 1:
         argv = ["app"]

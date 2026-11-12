@@ -30,6 +30,7 @@ jobs:
           - os: macos-15-intel
             target: mac-intel
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -56,11 +57,15 @@ jobs:
         run: python packaging/build.py
 
       - name: Check the built app edits a photo
+        timeout-minutes: 5
+        env:
+          CWP_WORKER_HOME: ${{ runner.temp }}/cwp-home
         run: |
           mkdir -p smoke/in
           python -c "from PIL import Image; Image.new('RGB', (900, 600), (200, 150, 90)).save('smoke/in/test.jpg')"
           if [[ "${{ matrix.target }}" == windows ]]; then app="dist/Cute Wedding Polaroid/Cute Wedding Polaroid.exe"; else app="dist/Cute Wedding Polaroid.app/Contents/MacOS/Cute Wedding Polaroid"; fi
-          "$app" edit smoke/in --out smoke/out
+          "$app" edit smoke/in --out smoke/out || { cat "$CWP_WORKER_HOME/app.log" 2>/dev/null; exit 1; }
+          cat "$CWP_WORKER_HOME/app.log" 2>/dev/null || true
           test -f smoke/out/test.jpg && test -f smoke/out/looks.csv && cat smoke/out/looks.csv
 
       - name: Windows installer
@@ -77,7 +82,12 @@ jobs:
         run: |
           mkdir -p dist-installer
           name="CuteWeddingPolaroid-Mac-${{ matrix.target == 'mac-intel' && 'Intel' || 'AppleSilicon' }}.dmg"
-          hdiutil create -volname "Cute Wedding Polaroid" -srcfolder "dist/Cute Wedding Polaroid.app" -ov -format UDZO "dist-installer/$name"
+          # hdiutil sometimes fails with "Resource busy" on GitHub's Macs: try again.
+          for attempt in 1 2 3 4 5; do
+            hdiutil create -volname "Cute Wedding Polaroid" -srcfolder "dist/Cute Wedding Polaroid.app" -ov -format UDZO "dist-installer/$name" && break
+            [ "$attempt" = 5 ] && exit 1
+            sleep $((attempt * 5))
+          done
           ls -la dist-installer
 
       - uses: actions/upload-artifact@v4

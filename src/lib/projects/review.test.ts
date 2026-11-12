@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 import { EDIT_VERSION_PATTERN, editVersionPaths, newEditVersion } from "./paths";
-import { validEditChoice } from "./review";
+import { parseCheck, validEditChoice } from "./review";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const PROJECT = "22222222-2222-4222-8222-222222222222";
@@ -36,5 +36,23 @@ describe("edit choices", () => {
     expect(validEditChoice({ version: "ab12cd34", lighting: "moon", look: "honey-film" })).toBe(false);
     expect(validEditChoice({ version: "ab12cd34", lighting: "golden", look: "Honey Film" })).toBe(false);
     expect(validEditChoice("honey-film")).toBe(false);
+  });
+});
+
+describe("shot checks", () => {
+  const good = { sharpness: 120.5, brightness: 0.4, clipped: 0.01, dark: 0.02, dhash: "0123456789abcdef", faces: 2, eyesClosed: 1 };
+
+  it("accept sane numbers", () => {
+    expect(parseCheck(good)).toEqual(good);
+    expect(parseCheck({ ...good, faces: null, eyesClosed: null })).toEqual({ ...good, faces: 0, eyesClosed: 0 });
+  });
+
+  it("refuse odd ones", () => {
+    expect(parseCheck(null)).toBeNull();
+    expect(parseCheck({ ...good, brightness: 2 })).toBeNull();
+    expect(parseCheck({ ...good, sharpness: Number.NaN })).toBeNull();
+    expect(parseCheck({ ...good, dhash: "xyz" })).toBeNull();
+    expect(parseCheck({ ...good, faces: 1.5 })).toBeNull();
+    expect(parseCheck({ ...good, eyesClosed: 99 })).toBeNull();
   });
 });

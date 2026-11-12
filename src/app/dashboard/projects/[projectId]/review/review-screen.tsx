@@ -7,7 +7,9 @@ import type { StylePrefs } from "@/lib/looks/engine";
 import { reEditAndUpload } from "@/lib/looks/edit-upload";
 import { LIGHTING_LABELS } from "@/lib/projects/paths";
 import type { ReviewItem, ReviewLinks } from "@/lib/projects/review";
-import { loadReviewLinks, saveEdit, setHidden, setReviewed } from "./actions";
+import { FLAG_LABELS, flagShots } from "@/lib/quality/flags";
+import { loadReviewLinks, saveEdit, saveShotChecks, setHidden, setManyHidden, setReviewed } from "./actions";
+import { useShotChecks } from "./use-shot-checks";
 import { ORIGINAL, usePhotoEditor, type Choice } from "./use-photo-editor";
 
 type Props = {
@@ -18,7 +20,7 @@ type Props = {
   style: StylePrefs;
 };
 
-type Filter = "all" | "todo";
+type Filter = "all" | "todo" | "misses";
 
 /** Saves waiting to run: photo id -> what to save (the latest pick wins). */
 type Job = { choice: Choice; group: Group };
@@ -40,7 +42,18 @@ export function ReviewScreen({ projectId, organizationId, projectName, initialIt
   const running = useRef(false);
   const groups = useRef(new Map<string, Group>());
 
-  const list = useMemo(() => (filter === "todo" ? items.filter((i) => !i.reviewed || i.id === currentId) : items), [items, filter, currentId]);
+  const flagged = useMemo(() => flagShots(items.map((i) => ({ id: i.id, check: i.check }))), [items]);
+  const misses = useMemo(() => items.filter((i) => flagged.get(i.id)?.flags.length && !i.hidden), [items, flagged]);
+  const list = useMemo(() => {
+    if (filter === "todo") return items.filter((i) => !i.reviewed || i.id === currentId);
+    if (filter === "misses") return items.filter((i) => (flagged.get(i.id)?.flags.length && !i.hidden) || i.id === currentId);
+    return items;
+  }, [items, filter, currentId, flagged]);
+  const [confirmHideMisses, setConfirmHideMisses] = useState(false);
+  const scan = useShotChecks(projectId, items, (checks) => {
+    setItems((all) => all.map((i) => (checks[i.id] ? { ...i, check: checks[i.id] } : i)));
+    void saveShotChecks(projectId, Object.entries(checks).map(([photoId, check]) => ({ photoId, check })));
+  });
   const index = Math.max(0, list.findIndex((i) => i.id === currentId));
   const item = list[index] ?? null;
   const reviewedCount = items.filter((i) => i.reviewed).length;
@@ -246,7 +259,7 @@ export function ReviewScreen({ projectId, organizationId, projectName, initialIt
           {reviewedCount} of {items.length} approved
         </span>
         <div className="ml-auto flex items-center gap-1 rounded-full bg-white/5 p-1" role="tablist" aria-label="Which photos">
-          {(["all", "todo"] as const).map((f) => (
+          {(["all", "todo", "misses"] as const).map((f) => (
             <button
               key={f}
               type="button"
@@ -255,10 +268,15 @@ export function ReviewScreen({ projectId, organizationId, projectName, initialIt
               onClick={() => setFilter(f)}
               className={`rounded-full px-3 py-1 text-xs font-semibold ${filter === f ? "bg-white text-neutral-950" : "text-neutral-300 hover:text-white"}`}
             >
-              {f === "all" ? "All photos" : "To approve"}
+              {f === "all" ? "All photos" : f === "todo" ? "To approve" : `Possible misses (${misses.length})`}
             </button>
           ))}
         </div>
+        {scan.total ? (
+          <span className="text-xs text-neutral-400" aria-live="polite">
+            Checking for misses {scan.done} of {scan.total}…
+          </span>
+        ) : null}
         <SaveStatus pending={saving.pending} failed={saving.failed} message={saving.message} />
       </div>
 
@@ -283,6 +301,11 @@ export function ReviewScreen({ projectId, organizationId, projectName, initialIt
             <span className="rounded-full bg-black/60 px-2.5 py-1 text-white">{comparing ? "Original" : look ? look.name : "Original"}</span>
             {item.hidden ? <span className="rounded-full bg-amber-400 px-2.5 py-1 font-semibold text-neutral-950">Hidden from guests</span> : null}
             {item.reviewed ? <span className="rounded-full bg-emerald-400 px-2.5 py-1 font-semibold text-neutral-950">Approved</span> : null}
+            {(flagged.get(item.id)?.flags ?? []).map((f) => (
+              <span key={f} className="rounded-full bg-rose-500 px-2.5 py-1 font-semibold text-white">
+                {f === "eyes_closed" && item.check && item.check.faces > 1 ? `Eyes closed (${item.check.eyesClosed} of ${item.check.faces})` : FLAG_LABELS[f]}
+              </span>
+            ))}
             {editor.rendering ? <span className="rounded-full bg-black/60 px-2.5 py-1 text-neutral-300">Rendering…</span> : null}
           </div>
           <button type="button" onClick={() => go(-1)} disabled={index === 0} aria-label="Previous photo" className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-3 text-white hover:bg-black/80 disabled:opacity-30">
@@ -304,6 +327,42 @@ export function ReviewScreen({ projectId, organizationId, projectName, initialIt
 
         {/* Looks and actions */}
         <aside className="flex w-full flex-col gap-4 overflow-y-auto border-white/10 bg-neutral-900 p-4 text-neutral-200 lg:w-[380px] lg:border-l">
+          {filter === "misses" ? (
+            <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm">
+              <p className="text-rose-100">
+                {misses.length
+                  ? `${misses.length} photo${misses.length === 1 ? "" : "s"} look like misses: soft focus, closed eyes, bad exposure, or a weaker copy of the shot next to it. Check them, then hide the ones guests shouldn't see.`
+                  : scan.total
+                    ? "Still checking photos…"
+                    : "No misses found."}
+              </p>
+              {flagged.get(item.id)?.similarTo ? (
+                <button type="button" onClick={() => setCurrentId(flagged.get(item.id)!.similarTo)} className="mt-2 text-xs font-semibold text-white underline underline-offset-4">
+                  See the better shot
+                </button>
+              ) : null}
+              {misses.length ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirmHideMisses) {
+                      setConfirmHideMisses(true);
+                      return;
+                    }
+                    setConfirmHideMisses(false);
+                    const ids = new Set(misses.map((m) => m.id));
+                    setItems((all) => all.map((i) => (ids.has(i.id) ? { ...i, hidden: true } : i)));
+                    void setManyHidden(projectId, [...ids], true).then(({ error }) => {
+                      if (error) setSaving((st) => ({ ...st, message: error }));
+                    });
+                  }}
+                  className={`mt-3 block w-full rounded-full px-4 py-2 text-sm font-semibold ${confirmHideMisses ? "bg-rose-400 text-neutral-950" : "bg-white/10 text-white hover:bg-white/20"}`}
+                >
+                  {confirmHideMisses ? `Tap again to hide ${misses.length} from guests` : `Hide all ${misses.length} from guests`}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => void approve()} className={`rounded-full px-4 py-2.5 text-sm font-semibold ${item.reviewed ? "bg-emerald-400 text-neutral-950" : "bg-white text-neutral-950 hover:opacity-90"}`}>
               {item.reviewed ? "✓ Approved" : "Approve"} <kbd className="ml-1 hidden text-xs opacity-60 sm:inline">Enter</kbd>

@@ -63,3 +63,5 @@ export async function POST(request: Request) {
   }
   return json({ project: data, created: true }, 201);
 }
+
+export { OPTIONS } from "@/lib/projects/preflight";

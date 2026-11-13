@@ -41,3 +41,5 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
   const [full, thumb, editedFull, editedThumb] = links.map((l) => l.data?.signedUrl);
   return json({ photoId, full, thumb, ...(edited ? { editedFull, editedThumb } : {}) }, 201);
 }
+
+export { OPTIONS } from "@/lib/projects/preflight";

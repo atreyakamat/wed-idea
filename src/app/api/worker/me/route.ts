@@ -12,3 +12,5 @@ export async function GET(request: Request) {
   const style = await studioStyle(session.supabase, session.studio.id);
   return json({ studio: { id: session.studio.id, name: session.studio.name }, computer: session.computer, blocked: workerBlocked(session.studio), style });
 }
+
+export { OPTIONS } from "@/lib/projects/preflight";

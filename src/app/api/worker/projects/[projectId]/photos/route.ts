@@ -44,3 +44,5 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
   if (!result.ok) return jsonError(result.status ?? 500, result.error);
   return json({ ok: true, duplicate: Boolean(result.duplicate) }, result.duplicate ? 200 : 201);
 }
+
+export { OPTIONS } from "@/lib/projects/preflight";

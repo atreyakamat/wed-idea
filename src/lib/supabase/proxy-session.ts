@@ -33,6 +33,9 @@ export async function updateSession(request: NextRequest) {
           );
         },
       },
+      ...(env.NEXT_PUBLIC_SUPABASE_SCHEMA
+        ? { db: { schema: env.NEXT_PUBLIC_SUPABASE_SCHEMA } }
+        : {}),
     },
   );
 

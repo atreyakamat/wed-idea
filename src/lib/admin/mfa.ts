@@ -25,3 +25,12 @@ export function mfaStep(row: AdminMfaRow, verifiedFactorIds: string[], now: Date
   const [existing] = verifiedFactorIds;
   return existing ? { kind: "verify", factorId: existing, registers: true } : { kind: "enrol" };
 }
+
+/** Formats an authenticator QR code string (raw SVG markup, data URI, or URL) into a safe Image src. */
+export function toQrCodeDataUrl(qrCode: string): string {
+  const trimmed = qrCode.trim();
+  if (trimmed.startsWith("data:") || trimmed.startsWith("http:") || trimmed.startsWith("https:")) {
+    return trimmed;
+  }
+  return `data:image/svg+xml;utf-8,${encodeURIComponent(trimmed)}`;
+}

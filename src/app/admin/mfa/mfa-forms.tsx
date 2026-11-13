@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useActionState, useMemo } from "react";
 import { Field, FormMessage, initialFormState, SubmitButton } from "@/components/ui/form";
+import { toQrCodeDataUrl } from "@/lib/admin/mfa";
 import { beginEnrolment, verifyCode, type EnrolState } from "./actions";
 
 export function VerifyForm({ factorId, next }: Readonly<{ factorId: string; next: string }>) {
@@ -53,7 +54,7 @@ export function EnrolForm({ next }: Readonly<{ next: string }>) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex justify-center rounded-xl bg-white p-3">
-        <Image src={state.qrCode} alt="QR code for your authenticator app" width={180} height={180} unoptimized />
+        <Image src={toQrCodeDataUrl(state.qrCode)} alt="QR code for your authenticator app" width={180} height={180} unoptimized />
       </div>
       <details className="text-sm">
         <summary className="cursor-pointer text-muted">Can&apos;t scan? Enter the key instead</summary>

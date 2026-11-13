@@ -1,5 +1,6 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { publicEnv } from "@/lib/env";
@@ -8,7 +9,7 @@ import { publicEnv } from "@/lib/env";
  * Supabase client for Server Components, Server Actions and Route Handlers,
  * acting as the signed-in user (RLS applies). Create one per request.
  */
-export async function createClient() {
+export async function createClient(): Promise<SupabaseClient> {
   const env = publicEnv();
   const cookieStore = await cookies();
   // The client starts a background session check that reads the clock.
@@ -34,6 +35,9 @@ export async function createClient() {
           }
         },
       },
+      ...(env.NEXT_PUBLIC_SUPABASE_SCHEMA
+        ? { db: { schema: env.NEXT_PUBLIC_SUPABASE_SCHEMA } }
+        : {}),
     },
-  );
+  ) as unknown as SupabaseClient;
 }

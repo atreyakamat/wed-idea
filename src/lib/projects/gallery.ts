@@ -3,6 +3,7 @@ import type { StudioStatus } from "@/lib/auth";
 import { isGalleryOpen } from "@/lib/capture/photos";
 import { showBranding } from "@/lib/gallery/queries";
 import { UUID_PATTERN } from "@/lib/capture/photos";
+import { validDesigns, type SheetDesign } from "./look-sheet";
 import { publicEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PROJECT_BUCKET } from "./paths";
@@ -27,6 +28,7 @@ export type ProjectGallery =
       photos: PublicPhoto[];
       hasMore: boolean;
       showBranding: boolean;
+      lookSheets: SheetDesign[];
       logoUrl: string | null;
       cover: PublicPhoto | null;
     };
@@ -44,6 +46,7 @@ type Row = {
     trial_ends_at: string;
     paid_until: string | null;
     plans: { remove_branding: boolean } | null;
+    look_sheets: string[];
   } | null;
 };
 
@@ -77,7 +80,7 @@ async function findProject(token: string) {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, shoot_date, status, gallery_expires_at, organizations (name, logo_path, status, trial_ends_at, paid_until, plans (remove_branding))")
+    .select("id, name, shoot_date, status, gallery_expires_at, organizations (name, logo_path, look_sheets, status, trial_ends_at, paid_until, plans (remove_branding))")
     .eq("access_token", token)
     .maybeSingle<Row>();
   if (error) throw new Error(`Couldn't load the gallery: ${error.message}`);
@@ -119,6 +122,7 @@ export async function getProjectGallery(token: string, now: Date = new Date()): 
     photos,
     hasMore: page.hasMore,
     showBranding: showBranding(project.organizations),
+    lookSheets: validDesigns(project.organizations.look_sheets),
     logoUrl: studioLogoUrl(project.organizations.logo_path),
     cover,
   };

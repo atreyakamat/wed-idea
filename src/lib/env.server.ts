@@ -12,7 +12,7 @@ let cached: z.infer<typeof serverSchema> | undefined;
 
 export function serverEnv() {
   cached ??= parseOrThrow(serverSchema, {
-    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY?.trim(),
   });
   return cached;
 }

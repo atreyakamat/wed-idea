@@ -13,16 +13,24 @@ export type PublicEnv = z.infer<typeof publicSchema>;
 
 let cachedPublic: PublicEnv | undefined;
 
+function normalizeUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 export function publicEnv(): PublicEnv {
   // Next.js inlines NEXT_PUBLIC_* only when accessed by their full name.
   cachedPublic ??= parseOrThrow(publicSchema, {
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_URL: normalizeUrl(process.env.NEXT_PUBLIC_SUPABASE_URL),
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-    NEXT_PUBLIC_SITE_URL:
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim(),
+    NEXT_PUBLIC_SITE_URL: normalizeUrl(
       process.env.NEXT_PUBLIC_SITE_URL ||
       process.env.URL ||
       process.env.DEPLOY_PRIME_URL,
+    ),
     NEXT_PUBLIC_SUPABASE_SCHEMA: process.env.NEXT_PUBLIC_SUPABASE_SCHEMA?.trim() || undefined,
   });
   return cachedPublic;
@@ -35,7 +43,7 @@ export function parseOrThrow<T>(schema: z.ZodType<T>, input: unknown): T {
       .map((issue) => issue.path.join("."))
       .join(", ");
     throw new Error(
-      `Missing or invalid environment variables: ${missing}. See .env.example.`,
+      `Missing or invalid environment variables: ${missing}. Please set these in Netlify (Site configuration -> Environment variables) or in .env.local.`,
     );
   }
   return result.data;

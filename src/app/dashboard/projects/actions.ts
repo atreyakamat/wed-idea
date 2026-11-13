@@ -73,6 +73,16 @@ export async function updateProject(projectId: string, _prev: FormState, formDat
   return { error: null, success: "Details saved." };
 }
 
+/** Turns the client's selection on or off: when on, guests can download only the photos they hearted. */
+export async function setSelectionOnly(projectId: string, on: boolean): Promise<FormState> {
+  const { studio } = await managerProject(projectId);
+  const supabase = await createClient();
+  const { error } = await supabase.from("projects").update({ selection_only: on === true }).eq("id", projectId).eq("organization_id", studio.id);
+  if (error) return { error: friendlyDbError(error) ?? "Couldn't save that. Try again." };
+  refresh();
+  return { error: null, success: on ? "On. Guests can download only the photos they picked." : "Off. Guests can download every photo." };
+}
+
 const STATUS_DONE: Record<ProjectStatus, string> = {
   published: "Published. Anyone with the link can see the visible photos.",
   draft: "Unpublished. The link has stopped working.",

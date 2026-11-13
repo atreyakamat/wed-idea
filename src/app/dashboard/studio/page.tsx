@@ -6,6 +6,7 @@ import { LIGHTING_LABELS } from "@/lib/projects/paths";
 import { studioStyle } from "@/lib/projects/review";
 import { createClient } from "@/lib/supabase/server";
 import { LogoForm } from "./logo-form";
+import { LookDefaults } from "./look-defaults";
 import { ResetStyleButton } from "./reset-style";
 
 export const metadata = { title: "Studio" };
@@ -27,8 +28,8 @@ export default function StudioPage() {
       <section className="mt-6 rounded-2xl border border-line bg-surface p-6 sm:p-8">
         <h2 className="text-lg font-semibold">Your editing style</h2>
         <p className="mt-1 text-sm text-muted">
-          Learnt from the looks you pick and approve in Review. Once a look is your clear favourite for a kind of light, new photos in that light get it
-          automatically, in the browser and the PC app.
+          Choose the look for each kind of light, or leave it automatic: then the look you pick and approve in Review is learnt and used. Your choice here
+          wins, in the browser and the PC app.
         </p>
         <Suspense fallback={<div className="h-40" aria-hidden />}>
           <Style />
@@ -41,23 +42,36 @@ export default function StudioPage() {
 async function Style() {
   const { studio } = await requireStudio("/dashboard/studio");
   const supabase = await createClient();
-  const [style, { data }] = await Promise.all([studioStyle(supabase, studio.id), supabase.from("studio_look_picks").select("picks").eq("organization_id", studio.id)]);
+  const [style, { data }, { data: learntRows }, { data: chosenRows }] = await Promise.all([
+    studioStyle(supabase, studio.id),
+    supabase.from("studio_look_picks").select("picks").eq("organization_id", studio.id),
+    supabase.rpc("studio_style", { p_org: studio.id }),
+    supabase.from("studio_look_defaults").select("lighting, look").eq("organization_id", studio.id),
+  ]);
   const picks = ((data ?? []) as { picks: number }[]).reduce((n, r) => n + r.picks, 0);
+  const learnt: Record<string, string> = {};
+  for (const r of (learntRows ?? []) as { lighting: string; look: string }[]) learnt[r.lighting] = r.look;
+  const chosen: Record<string, string> = {};
+  for (const r of (chosenRows ?? []) as { lighting: string; look: string }[]) chosen[r.lighting] = r.look;
+  const standard: Record<string, string> = { ...DATA.defaultLook };
+  const manager = canManage(studio.role);
+
   return (
     <>
-      <dl className="mt-5 divide-y divide-line text-sm">
-        {LIGHTING_GROUPS.map((g) => (
-          <div key={g} className="flex items-baseline justify-between gap-4 py-2.5">
-            <dt className="text-muted">{LIGHTING_LABELS[g]}</dt>
-            <dd className="font-medium">
-              {getLook(style[g] ?? DATA.defaultLook[g]).name}
-              <span className="ml-2 text-xs font-normal text-muted">{style[g] ? "your pick" : "standard"}</span>
-            </dd>
-          </div>
-        ))}
-      </dl>
+      {manager ? (
+        <LookDefaults groups={[...LIGHTING_GROUPS]} current={chosen} learnt={learnt} standard={standard} />
+      ) : (
+        <dl className="mt-5 divide-y divide-line text-sm">
+          {LIGHTING_GROUPS.map((g) => (
+            <div key={g} className="flex items-baseline justify-between gap-4 py-2.5">
+              <dt className="text-muted">{LIGHTING_LABELS[g]}</dt>
+              <dd className="font-medium">{getLook(style[g] ?? DATA.defaultLook[g]).name}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       <p className="mt-3 text-xs text-muted">{picks ? `Learnt from ${picks} pick${picks === 1 ? "" : "s"}.` : "Nothing learnt yet."}</p>
-      {canManage(studio.role) && picks ? <ResetStyleButton /> : null}
+      {manager && picks ? <ResetStyleButton /> : null}
     </>
   );
 }

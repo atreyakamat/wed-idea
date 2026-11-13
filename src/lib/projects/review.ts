@@ -108,10 +108,17 @@ export async function reviewLinks(supabase: SupabaseClient, projectId: string, i
 }
 
 /** The look a studio has settled on for each kind of light. */
+/** The look each kind of light gets: a default the studio chose, else the look learnt from Review. */
 export async function studioStyle(supabase: SupabaseClient, organizationId: string): Promise<StylePrefs> {
-  const { data } = await supabase.rpc("studio_style", { p_org: organizationId });
+  const [{ data }, { data: chosen }] = await Promise.all([
+    supabase.rpc("studio_style", { p_org: organizationId }),
+    supabase.from("studio_look_defaults").select("lighting, look").eq("organization_id", organizationId),
+  ]);
   const style: StylePrefs = {};
   for (const row of (data ?? []) as { lighting: string; look: string }[]) {
+    if (isGroup(row.lighting) && LOOK_ID_PATTERN.test(row.look)) style[row.lighting] = row.look;
+  }
+  for (const row of (chosen ?? []) as { lighting: string; look: string }[]) {
     if (isGroup(row.lighting) && LOOK_ID_PATTERN.test(row.look)) style[row.lighting] = row.look;
   }
   return style;

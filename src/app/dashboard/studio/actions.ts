@@ -22,6 +22,28 @@ export async function setStudioLogo(path: string | null): Promise<FormState> {
   return { error: null, success: path ? "Logo saved. It now shows on your galleries." : "Logo removed." };
 }
 
+const LIGHTS = ["daylight", "golden", "indoor", "stage", "night"] as const;
+const LOOK_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** Sets (or, with a null look, clears) the default look for one kind of light. */
+export async function setLookDefault(lighting: string, look: string | null): Promise<FormState> {
+  const { studio } = await requireStudioManager();
+  if (!(LIGHTS as readonly string[]).includes(lighting)) return { error: "Unknown kind of light." };
+  if (look !== null && (!LOOK_ID.test(look) || look.length > 40)) return { error: "Unknown look." };
+
+  const supabase = await createClient();
+  const { data: user } = await supabase.auth.getUser();
+  const { error } =
+    look === null
+      ? await supabase.from("studio_look_defaults").delete().eq("organization_id", studio.id).eq("lighting", lighting)
+      : await supabase
+          .from("studio_look_defaults")
+          .upsert({ organization_id: studio.id, lighting, look, updated_at: new Date().toISOString(), updated_by: user.user?.id ?? null }, { onConflict: "organization_id,lighting" });
+  if (error) return { error: "Couldn't save that look. Try again." };
+  refresh();
+  return { error: null, success: look ? "Saved. New photos in that light use this look." : "Cleared. New photos in that light use your learnt look." };
+}
+
 /** Forgets the looks the studio has picked, so new photos start from the standard looks again. */
 export async function resetStudioStyle(): Promise<FormState> {
   const { studio } = await requireStudioManager();

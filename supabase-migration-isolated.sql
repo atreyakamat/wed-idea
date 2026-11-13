@@ -562,12 +562,12 @@ create policy "owners remove other members" on wed_idea.organization_members for
 -- Policies: replace admin-only rules with studio membership
 -- ---------------------------------------------------------------------------
 
-drop policy "admins manage events" on wed_idea.events;
-drop policy "admins manage guests" on wed_idea.guests;
-drop policy "admins manage photos" on wed_idea.photos;
-drop policy "admins manage orders" on wed_idea.orders;
-drop policy "admins manage order items" on wed_idea.order_items;
-drop policy "admins manage event photos" on storage.objects;
+drop policy if exists "admins manage events" on wed_idea.events;
+drop policy if exists "admins manage guests" on wed_idea.guests;
+drop policy if exists "admins manage photos" on wed_idea.photos;
+drop policy if exists "admins manage orders" on wed_idea.orders;
+drop policy if exists "admins manage order items" on wed_idea.order_items;
+drop policy if exists "admins manage event photos" on storage.objects;
 
 drop policy if exists "members read events" on wed_idea.events;
 create policy "members read events" on wed_idea.events for select
@@ -992,7 +992,7 @@ $$;
 
 -- Storage: members keep reading and deleting their files, but a suspended
 -- studio can't upload or overwrite any.
-drop policy "members manage their studio's photos" on storage.objects;
+drop policy if exists "members manage their studio's photos" on storage.objects;
 
 drop policy if exists "members read their studio's photos" on storage.objects;
 create policy "members read their studio's photos" on storage.objects for select
@@ -2542,8 +2542,8 @@ grant execute on function wed_idea.admin_plan_requests() to authenticated;
 -- Storage: uploads follow the same capture rule as photo rows
 -- ---------------------------------------------------------------------------
 
-drop policy "active members upload photos" on storage.objects;
-drop policy "active members replace photos" on storage.objects;
+drop policy if exists "active members upload photos" on storage.objects;
+drop policy if exists "active members replace photos" on storage.objects;
 
 drop policy if exists "active members upload photos" on storage.objects;
 create policy "active members upload photos" on storage.objects for insert

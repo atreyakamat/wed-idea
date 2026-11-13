@@ -86,7 +86,11 @@ function makeIdempotent(sql) {
     }
   );
 
-  // 9. Policies: drop policy if exists before create policy
+  // 9. Policies: drop policy if exists before create policy, and convert all drop policy to drop policy if exists
+  res = res.replace(
+    /drop policy\s+(?!if exists)\"([^\"]+)\"\s+on\s+([a-zA-Z0-9_.]+);/g,
+    'drop policy if exists "$1" on $2;'
+  );
   res = res.replace(
     /create policy\s+\"([^\"]+)\"\s+on\s+([a-zA-Z0-9_.]+)/g,
     (match, pol, tbl) => {

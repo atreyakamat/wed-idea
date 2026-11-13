@@ -37,6 +37,7 @@ type Row = {
   shoot_date: string | null;
   status: string;
   gallery_expires_at: string | null;
+  selection_only: boolean;
   organizations: {
     name: string;
     logo_path: string | null;
@@ -77,7 +78,7 @@ async function findProject(token: string) {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, shoot_date, status, gallery_expires_at, organizations (name, logo_path, status, trial_ends_at, paid_until, plans (remove_branding))")
+    .select("id, name, shoot_date, status, gallery_expires_at, selection_only, organizations (name, logo_path, status, trial_ends_at, paid_until, plans (remove_branding))")
     .eq("access_token", token)
     .maybeSingle<Row>();
   if (error) throw new Error(`Couldn't load the gallery: ${error.message}`);
@@ -169,9 +170,14 @@ async function signRows(supabase: Admin, rows: Row2[]): Promise<PublicPhoto[]> {
 }
 
 /** Every visible photo in shooting order, for "Download all". */
-export async function getGalleryDownloadList(token: string): Promise<PublicPhoto[] | null> {
+/**
+ * The photos a guest may download. In a selection-only gallery that is just
+ * the photos this visitor hearted (none without a visitor id).
+ */
+export async function getGalleryDownloadList(token: string, visitor?: string | null): Promise<PublicPhoto[] | null> {
   const found = await openProject(token);
   if (!found) return null;
+  if (found.project.selection_only && (!visitor || !UUID_PATTERN.test(visitor))) return [];
   const rows: Row2[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await found.supabase
@@ -186,6 +192,16 @@ export async function getGalleryDownloadList(token: string): Promise<PublicPhoto
     if (error) return null;
     rows.push(...(data ?? []));
     if ((data ?? []).length < 1000) break;
+  }
+  if (found.project.selection_only && visitor) {
+    const { data } = await found.supabase
+      .from("project_photo_hearts")
+      .select("photo_id, project_photos!inner (project_id)")
+      .eq("visitor", visitor)
+      .eq("project_photos.project_id", found.project.id)
+      .limit(MAX_HEARTS_PER_VISITOR);
+    const chosen = new Set(((data ?? []) as { photo_id: string }[]).map((r) => r.photo_id));
+    return signRows(found.supabase, rows.filter((r) => chosen.has(r.id)));
   }
   return signRows(found.supabase, rows);
 }

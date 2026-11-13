@@ -23,7 +23,7 @@ export async function loadFavourites(token: string, visitor: string) {
   return getVisitorFavourites(String(token), String(visitor));
 }
 
-export async function loadDownloadList(token: string) {
+export async function loadDownloadList(token: string, visitor: string) {
   if (!(await allow(`download:${await clientIp()}`, 30, 600))) return null;
-  return getGalleryDownloadList(String(token));
+  return getGalleryDownloadList(String(token), String(visitor));
 }

@@ -181,7 +181,7 @@ export function GalleryView({ token, projectName, initial, total }: Readonly<Pro
       ) : null}
 
       {downloading ? (
-        <DownloadSheet projectName={projectName} total={total} favourites={favourites} load={() => loadDownloadList(token)} onClose={() => setDownloading(false)} />
+        <DownloadSheet projectName={projectName} total={total} favourites={favourites} load={() => loadDownloadList(token, visitor.current || visitorId())} onClose={() => setDownloading(false)} />
       ) : null}
     </>
   );

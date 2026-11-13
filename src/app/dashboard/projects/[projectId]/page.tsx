@@ -6,6 +6,7 @@ import { ProjectForm } from "@/components/dashboard/project-form";
 import { ProjectStatusBadge } from "@/components/dashboard/project-status-badge";
 import { UsageMeter } from "@/components/dashboard/usage-meter";
 import { canManage, requireStudio } from "@/lib/auth";
+import { SelectionSwitch } from "./selection-switch";
 import { isGalleryOpen } from "@/lib/capture/photos";
 import { publicEnv } from "@/lib/env";
 import { formatIstDate } from "@/lib/events/time";
@@ -91,6 +92,7 @@ async function Project({ params }: Readonly<{ params: PageProps<"/dashboard/proj
         expired={project.status === "published" && !open}
         share={share}
       />
+      <SelectionSwitch projectId={project.id} selectionOnly={project.selection_only} canManage={manager} />
 
       <section aria-labelledby="photos-heading" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-end justify-between gap-4">

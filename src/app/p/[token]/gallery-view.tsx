@@ -6,6 +6,8 @@ import { columnsFor, masonry } from "@/lib/projects/gallery-layout";
 import { visitorId } from "@/lib/projects/visitor";
 import { heartPhoto, loadDownloadList, loadFavourites, loadGalleryPhotos } from "./actions";
 import { DownloadSheet } from "./download-sheet";
+import { LookSheetPanel } from "./look-sheet";
+import type { SheetDesign } from "@/lib/projects/look-sheet";
 import { HeartIcon, Lightbox } from "./lightbox";
 
 type Props = {
@@ -13,9 +15,11 @@ type Props = {
   projectName: string;
   initial: { photos: PublicPhoto[]; hasMore: boolean };
   total: number;
+  lookSheets: SheetDesign[];
 };
 
-export function GalleryView({ token, projectName, initial, total }: Readonly<Props>) {
+export function GalleryView({ token, projectName, initial, total, lookSheets }: Readonly<Props>) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [photos, setPhotos] = useState(initial.photos);
   const [hasMore, setHasMore] = useState(initial.hasMore);
   const [loading, setLoading] = useState(false);
@@ -122,6 +126,11 @@ export function GalleryView({ token, projectName, initial, total }: Readonly<Pro
               </button>
             ))}
           </div>
+          {lookSheets.length > 0 && favourites.length > 0 ? (
+            <button type="button" onClick={() => setSheetOpen(true)} className="rounded-full border border-line px-5 py-2 text-sm font-semibold hover:border-ink">
+              Look sheet
+            </button>
+          ) : null}
           <button type="button" onClick={() => setDownloading(true)} className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-paper hover:opacity-90">
             Download
           </button>
@@ -180,6 +189,7 @@ export function GalleryView({ token, projectName, initial, total }: Readonly<Pro
         />
       ) : null}
 
+      {sheetOpen ? <LookSheetPanel projectName={projectName} favourites={favourites} designs={lookSheets} onClose={() => setSheetOpen(false)} /> : null}
       {downloading ? (
         <DownloadSheet projectName={projectName} total={total} favourites={favourites} load={() => loadDownloadList(token)} onClose={() => setDownloading(false)} />
       ) : null}

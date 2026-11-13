@@ -7,6 +7,8 @@ import { studioStyle } from "@/lib/projects/review";
 import { createClient } from "@/lib/supabase/server";
 import { LogoForm } from "./logo-form";
 import { LookDefaults } from "./look-defaults";
+import { LookSheetsForm } from "./look-sheets-form";
+import { validDesigns } from "@/lib/projects/look-sheet";
 import { ResetStyleButton } from "./reset-style";
 
 export const metadata = { title: "Studio" };
@@ -33,6 +35,15 @@ export default function StudioPage() {
         </p>
         <Suspense fallback={<div className="h-40" aria-hidden />}>
           <Style />
+        </Suspense>
+      </section>
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-6 sm:p-8">
+        <h2 className="text-lg font-semibold">Look sheets</h2>
+        <p className="mt-1 text-sm text-muted">
+          Clients get these for the photos they pick: every look on one photo, the original beside its look, or both.
+        </p>
+        <Suspense fallback={<div className="h-24" aria-hidden />}>
+          <SheetSettings />
         </Suspense>
       </section>
     </div>
@@ -74,6 +85,15 @@ async function Style() {
       {manager && picks ? <ResetStyleButton /> : null}
     </>
   );
+}
+
+async function SheetSettings() {
+  const { studio } = await requireStudio("/dashboard/studio");
+  const supabase = await createClient();
+  const { data } = await supabase.from("organizations").select("look_sheets").eq("id", studio.id).single();
+  const current = validDesigns(data?.look_sheets);
+  if (!canManage(studio.role)) return <p className="mt-5 text-sm">{current.length ? current.map((d) => (d === "grid" ? "Grid of looks" : "Before and after")).join(", ") : "Off"}</p>;
+  return <LookSheetsForm current={current} />;
 }
 
 async function Logo() {

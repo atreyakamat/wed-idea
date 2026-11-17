@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import type { FormState } from "@/components/ui/form";
 import { requireStudioManager } from "@/lib/auth";
+import { validDesigns } from "@/lib/projects/look-sheet";
 import { createClient } from "@/lib/supabase/server";
 
 const LOGO_PATH_PATTERN = /^[0-9a-f-]{36}\/logo-[0-9a-f]{8,32}\.(png|jpg|webp)$/;
@@ -52,4 +53,15 @@ export async function resetStudioStyle(): Promise<FormState> {
   if (error) return { error: "Couldn't reset your style. Try again." };
   refresh();
   return { error: null, success: "Style reset. New photos start from the standard looks." };
+}
+
+/** Which look sheets clients get for the photos they pick (any mix, or none). */
+export async function setLookSheets(designs: unknown): Promise<FormState> {
+  const { studio } = await requireStudioManager();
+  const chosen = validDesigns(designs);
+  const supabase = await createClient();
+  const { error } = await supabase.from("organizations").update({ look_sheets: chosen }).eq("id", studio.id);
+  if (error) return { error: "Couldn't save the look sheet choice. Try again." };
+  refresh();
+  return { error: null, success: chosen.length ? "Saved. Clients get these sheets for the photos they pick." : "Look sheets are off." };
 }

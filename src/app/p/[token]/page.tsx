@@ -81,7 +81,7 @@ async function Gallery({ params }: Readonly<{ params: PageProps<"/p/[token]">["p
       </header>
 
       <div className="mt-6">
-        <GalleryView token={token} projectName={gallery.projectName} initial={{ photos: gallery.photos, hasMore: gallery.hasMore }} total={gallery.photoCount} />
+        <GalleryView token={token} projectName={gallery.projectName} initial={{ photos: gallery.photos, hasMore: gallery.hasMore }} total={gallery.photoCount} lookSheets={gallery.lookSheets} />
       </div>
 
       <footer className="mx-auto mt-10 max-w-6xl pb-12 text-center text-xs text-muted">

@@ -81,11 +81,7 @@ async function findProject(token: string) {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("projects")
-<<<<<<< HEAD
-    .select("id, name, shoot_date, status, gallery_expires_at, organizations (name, logo_path, look_sheets, status, trial_ends_at, paid_until, plans (remove_branding))")
-=======
-    .select("id, name, shoot_date, status, gallery_expires_at, selection_only, organizations (name, logo_path, status, trial_ends_at, paid_until, plans (remove_branding))")
->>>>>>> origin/main
+    .select("id, name, shoot_date, status, gallery_expires_at, selection_only, organizations (name, logo_path, look_sheets, status, trial_ends_at, paid_until, plans (remove_branding))")
     .eq("access_token", token)
     .maybeSingle<Row>();
   if (error) throw new Error(`Couldn't load the gallery: ${error.message}`);

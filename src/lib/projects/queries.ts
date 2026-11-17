@@ -18,6 +18,7 @@ export type Project = {
   access_token: string;
   published_at: string | null;
   first_published_at: string | null;
+  selection_only: boolean;
   gallery_expires_at: string | null;
   created_at: string;
 };
@@ -41,7 +42,7 @@ export type ProjectPhoto = {
 };
 
 const PROJECT_COLUMNS =
-  "id, organization_id, name, slug, kind, shoot_date, status, access_token, published_at, first_published_at, gallery_expires_at, created_at";
+  "id, organization_id, name, slug, kind, shoot_date, status, access_token, published_at, first_published_at, gallery_expires_at, selection_only, created_at";
 
 /** Signed links to the studio's own photos stay valid this long. */
 const SIGNED_URL_SECONDS = 60 * 60;

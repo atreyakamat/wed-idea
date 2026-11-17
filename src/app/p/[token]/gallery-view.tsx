@@ -191,7 +191,7 @@ export function GalleryView({ token, projectName, initial, total, lookSheets }: 
 
       {sheetOpen ? <LookSheetPanel projectName={projectName} favourites={favourites} designs={lookSheets} onClose={() => setSheetOpen(false)} /> : null}
       {downloading ? (
-        <DownloadSheet projectName={projectName} total={total} favourites={favourites} load={() => loadDownloadList(token)} onClose={() => setDownloading(false)} />
+        <DownloadSheet projectName={projectName} total={total} favourites={favourites} load={() => loadDownloadList(token, visitor.current || visitorId())} onClose={() => setDownloading(false)} />
       ) : null}
     </>
   );

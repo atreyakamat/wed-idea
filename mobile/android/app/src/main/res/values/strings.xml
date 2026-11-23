@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Cute Wedding Polaroid</string>
+    <string name="title_activity_main">Cute Wedding Polaroid</string>
+    <string name="package_name">in.wedidea.studio</string>
+    <string name="custom_url_scheme">in.wedidea.studio</string>
+</resources>

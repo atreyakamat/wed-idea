@@ -1,7 +1,7 @@
 import { listPlansWith } from "@/lib/projects/worker-plans";
 import { PROJECT_BUCKET, projectPhotoPaths } from "@/lib/projects/paths";
 import { countProjectPhotos } from "@/lib/projects/queries";
-import { authenticateWorker, json, jsonError, readJson, workerBlocked, workerProject } from "@/lib/projects/worker-api";
+import { authenticateWorker, json, jsonError, readJson, workerBlocked, workerPreflight, workerProject } from "@/lib/projects/worker-api";
 
 /**
  * Reserves a photo: returns a new photo id and two one-time upload URLs (the
@@ -11,9 +11,10 @@ import { authenticateWorker, json, jsonError, readJson, workerBlocked, workerPro
  * take more photos; the database checks again when the photo is recorded.
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/worker/projects/[projectId]/uploads">) {
-  const session = await authenticateWorker(request);
+  const { projectId } = await ctx.params;
+  const session = await authenticateWorker(request, { projectId });
   if (session instanceof Response) return session;
-  const project = await workerProject(session, (await ctx.params).projectId);
+  const project = await workerProject(session, projectId);
   if (project instanceof Response) return project;
 
   const blocked = workerBlocked(session.studio);
@@ -27,7 +28,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
 
   // Caps files in the folder, so upload links that are never confirmed can't
   // fill storage past the plan's photo limit.
-  const room = await session.supabase.rpc("project_has_file_room", { p_project: project.id });
+  // Service role: the database doesn't let signed-in users call this RPC. The
+  // project was already checked against the caller's studio above.
+  const room = await session.admin.rpc("project_has_file_room", { p_project: project.id });
   if (room.error) return jsonError(500, "Couldn't prepare the upload. Try again.");
   if (room.data !== true) return jsonError(403, "This project has too many unfinished uploads. Try again later.");
 
@@ -41,3 +44,5 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
   const [full, thumb, editedFull, editedThumb] = links.map((l) => l.data?.signedUrl);
   return json({ photoId, full, thumb, ...(edited ? { editedFull, editedThumb } : {}) }, 201);
 }
+
+export const OPTIONS = workerPreflight;

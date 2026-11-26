@@ -1,13 +1,16 @@
 import { PROJECT_KINDS } from "@/lib/projects/form";
 import { uniqueProjectSlug } from "@/lib/projects/slug";
-import { authenticateWorker, json, jsonError, readJson, workerBlocked } from "@/lib/projects/worker-api";
+import { authenticateWorker, json, jsonError, readJson, workerBlocked, workerPreflight } from "@/lib/projects/worker-api";
 import { friendlyDbError } from "@/lib/studio/status";
 
 type Row = { id: string; name: string; slug: string; status: string; project_photos: { count: number }[] };
 
-/** The studio's projects, newest first. */
+/**
+ * The studio's projects, newest first. A web-app caller passes
+ * ?organizationId=<studio>.
+ */
 export async function GET(request: Request) {
-  const session = await authenticateWorker(request);
+  const session = await authenticateWorker(request, { organizationId: new URL(request.url).searchParams.get("organizationId") });
   if (session instanceof Response) return session;
   const { data, error } = await session.supabase
     .from("projects")
@@ -25,11 +28,13 @@ export async function GET(request: Request) {
  * Finds the project for a folder, creating it if needed. The folder's name is
  * matched by its short name ("Meera 30th" -> "meera-30th"), so watching the
  * same folder again reuses its project instead of making a new one.
+ * A web-app caller also sends organizationId in the body (its studio); the
+ * PC app's studio comes from its token.
  */
 export async function POST(request: Request) {
-  const session = await authenticateWorker(request);
+  const body = await readJson(request.clone());
+  const session = await authenticateWorker(request, { organizationId: body?.organizationId });
   if (session instanceof Response) return session;
-  const body = await readJson(request);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   if (!name || name.length > 120) return jsonError(400, "Give the project a name of 1 to 120 characters.");
   const kind = typeof body?.kind === "string" && (PROJECT_KINDS as readonly string[]).includes(body.kind) ? body.kind : "other";
@@ -63,3 +68,5 @@ export async function POST(request: Request) {
   }
   return json({ project: data, created: true }, 201);
 }
+
+export const OPTIONS = workerPreflight;

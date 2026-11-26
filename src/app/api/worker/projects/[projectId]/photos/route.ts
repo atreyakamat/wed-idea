@@ -1,6 +1,6 @@
 import type { LightingGroup } from "@/lib/projects/paths";
 import { recordProjectPhoto } from "@/lib/projects/queries";
-import { authenticateWorker, json, jsonError, readJson, workerProject } from "@/lib/projects/worker-api";
+import { authenticateWorker, json, jsonError, readJson, workerPreflight, workerProject } from "@/lib/projects/worker-api";
 import { friendlyDbError } from "@/lib/studio/status";
 
 /** A number, null when missing, NaN (rejected later) when not a number. */
@@ -17,16 +17,17 @@ function nullableString(v: unknown): string | null {
 
 /** Records a photo once both of its files are uploaded. */
 export async function POST(request: Request, ctx: RouteContext<"/api/worker/projects/[projectId]/photos">) {
-  const session = await authenticateWorker(request);
+  const { projectId } = await ctx.params;
+  const session = await authenticateWorker(request, { projectId });
   if (session instanceof Response) return session;
-  const project = await workerProject(session, (await ctx.params).projectId);
+  const project = await workerProject(session, projectId);
   if (project instanceof Response) return project;
 
   const body = await readJson(request);
   if (!body) return jsonError(400, "Send the photo as JSON.");
   const result = await recordProjectPhoto(
     session.supabase,
-    session.supabase,
+    session.admin,
     project,
     {
       photoId: typeof body.photoId === "string" ? body.photoId : "",
@@ -44,3 +45,5 @@ export async function POST(request: Request, ctx: RouteContext<"/api/worker/proj
   if (!result.ok) return jsonError(result.status ?? 500, result.error);
   return json({ ok: true, duplicate: Boolean(result.duplicate) }, result.duplicate ? 200 : 201);
 }
+
+export const OPTIONS = workerPreflight;

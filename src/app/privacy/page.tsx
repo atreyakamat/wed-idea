@@ -64,7 +64,7 @@ export default function PrivacyPage() {
       <h2>Who else handles it</h2>
       <p>
         We use trusted providers to run the service: our database and file storage provider, our hosting provider, our email
-        provider for account emails, and, when online payments start, our payment provider. They process data only on our
+        provider for account emails. They process data only on our
         instructions. Their servers may be outside India.
       </p>
 

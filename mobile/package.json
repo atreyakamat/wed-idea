@@ -1,0 +1,17 @@
+{
+  "name": "wed-idea-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Android wrapper for wed-idea: opens the live studio site inside the app.",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "typescript": "^5.6.0"
+  }
+}

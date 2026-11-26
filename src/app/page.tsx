@@ -57,7 +57,7 @@ const faqs = [
   },
   {
     q: "How do I pay?",
-    a: "Start with the free trial. Plans are monthly; for now we invoice by UPI or bank transfer, and online checkout is on its way.",
+    a: "Start with the free trial. Plans are monthly; pay by UPI, GPay or bank transfer.",
   },
 ];
 

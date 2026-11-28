@@ -2,10 +2,10 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import type { StudioStatus } from "@/lib/auth";
-import { UUID_PATTERN } from "@/lib/capture/photos";
 import { accessFor, blockedMessage } from "@/lib/studio/status";
 import { allow } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { loadProject, type WriteProject } from "./project-writes";
 import { bearerToken, hashWorkerToken } from "./worker-token";
 
 // The PC app's API. Every call carries "Authorization: Bearer cwp_wk_…".
@@ -78,20 +78,12 @@ export function workerBlocked(studio: WorkerStudio): string | null {
   return blockedMessage(accessFor(studio));
 }
 
-export type WorkerProject = { id: string; organization_id: string; name: string; slug: string; status: string };
+export type WorkerProject = WriteProject;
 
 /** A project of the worker's studio, or a 404 response. */
 export async function workerProject(session: WorkerSession, projectId: string): Promise<WorkerProject | NextResponse> {
-  if (!UUID_PATTERN.test(projectId)) return jsonError(404, "Project not found.");
-  const { data, error } = await session.supabase
-    .from("projects")
-    .select("id, organization_id, name, slug, status")
-    .eq("id", projectId)
-    .eq("organization_id", session.studio.id)
-    .maybeSingle<WorkerProject>();
-  if (error) return jsonError(500, "Couldn't load the project. Try again.");
-  if (!data) return jsonError(404, "Project not found.");
-  return data;
+  const r = await loadProject(session.supabase, session.studio.id, projectId);
+  return r.ok ? r.value : jsonError(r.status, r.error);
 }
 
 /** Reads a JSON body, or null if it isn't a JSON object. */

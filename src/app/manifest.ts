@@ -1,0 +1,7 @@
+import type { MetadataRoute } from "next";
+import { buildManifest } from "@/lib/pwa/manifest";
+
+/** Served at /manifest.webmanifest. */
+export default function manifest(): MetadataRoute.Manifest {
+  return buildManifest();
+}

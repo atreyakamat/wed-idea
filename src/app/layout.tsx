@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { Analytics } from "@/components/site/analytics";
 import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
 import { polaroidFontVariables } from "@/lib/polaroid/fonts";
+import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import "./globals.css";
 
 const body = Inter({ variable: "--font-body", subsets: ["latin"] });
@@ -25,6 +26,7 @@ export const metadata: Metadata = {
   applicationName: BRAND_NAME,
   openGraph: { type: "website", siteName: BRAND_NAME, title: BRAND_NAME, description: DESCRIPTION, locale: "en_IN" },
   twitter: { card: "summary_large_image", title: BRAND_NAME, description: DESCRIPTION },
+  icons: { apple: "/icons/icon-192.png" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -32,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${body.variable} ${heading.variable} ${polaroidFontVariables} h-full antialiased`}>
       <body className="flex min-h-full flex-col font-sans">
         {children}
+        <ServiceWorkerRegister />
         <Suspense fallback={null}>
           <Analytics />
         </Suspense>

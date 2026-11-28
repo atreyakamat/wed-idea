@@ -1,7 +1,6 @@
 import { PROJECT_KINDS } from "@/lib/projects/form";
-import { uniqueProjectSlug } from "@/lib/projects/slug";
-import { authenticateWorker, json, jsonError, readJson, workerBlocked } from "@/lib/projects/worker-api";
-import { friendlyDbError } from "@/lib/studio/status";
+import { authenticateWorker, json, jsonError, readJson } from "@/lib/projects/worker-api";
+import { findOrCreateProject } from "@/lib/projects/project-writes";
 
 type Row = { id: string; name: string; slug: string; status: string; project_photos: { count: number }[] };
 
@@ -34,32 +33,7 @@ export async function POST(request: Request) {
   if (!name || name.length > 120) return jsonError(400, "Give the project a name of 1 to 120 characters.");
   const kind = typeof body?.kind === "string" && (PROJECT_KINDS as readonly string[]).includes(body.kind) ? body.kind : "other";
 
-  const { supabase, studio } = session;
-  const wanted = uniqueProjectSlug(name, new Set());
-  const existing = await supabase
-    .from("projects")
-    .select("id, name, slug, status")
-    .eq("organization_id", studio.id)
-    .eq("slug", wanted)
-    .maybeSingle();
-  if (existing.error) return jsonError(500, "Couldn't look up the project. Try again.");
-  if (existing.data) return json({ project: existing.data, created: false });
-
-  const blocked = workerBlocked(studio);
-  if (blocked) return jsonError(403, blocked);
-
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({ organization_id: studio.id, name, slug: wanted, kind })
-    .select("id, name, slug, status")
-    .single();
-  if (error) {
-    if (error.code === "23505") {
-      const again = await supabase.from("projects").select("id, name, slug, status").eq("organization_id", studio.id).eq("slug", wanted).maybeSingle();
-      if (again.data) return json({ project: again.data, created: false });
-    }
-    const friendly = friendlyDbError(error);
-    return jsonError(friendly ? 403 : 500, friendly ?? "Couldn't create the project. Try again.");
-  }
-  return json({ project: data, created: true }, 201);
+  const r = await findOrCreateProject(session, name, kind);
+  if (!r.ok) return jsonError(r.status, r.error);
+  return r.value.created ? json({ project: r.value.project, created: true }, 201) : json({ project: r.value.project, created: false });
 }

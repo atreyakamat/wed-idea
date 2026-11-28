@@ -1,0 +1,75 @@
+/*
+ * Pixi camera styles, ported from Pixi's globals.css. This file is imported only by the /camera
+ * route, and every rule sits under .pixi-root or on the body while the camera is open, so nothing
+ * else on the site changes. Tailwind utilities come from the site's own Tailwind build.
+ */
+
+.pixi-root {
+  --background: #07070a;
+  --foreground: #f4f1ea;
+  --accent: #ffc247;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  min-height: 100dvh;
+  width: 100%;
+  background: #000;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* While the camera is open, the page behind it is black too, so overscroll matches. */
+body:has(.pixi-root) { background: #000; }
+
+.pixi-root input,
+.pixi-root textarea { -webkit-user-select: text; user-select: text; }
+.pixi-root ::-webkit-scrollbar { display: none; }
+.pixi-root * { scrollbar-width: none; }
+
+.pixi-root .safe-b { padding-bottom: env(safe-area-inset-bottom); }
+.pixi-root .safe-t { padding-top: env(safe-area-inset-top); }
+.pixi-root .gpu { transform: translateZ(0); will-change: transform; }
+.pixi-root .lcd { font-family: var(--font-mono); letter-spacing: .08em; }
+.pixi-root .hair { box-shadow: inset 0 0 0 1px rgba(255,255,255,.09); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pixi-root, .pixi-root *, .pixi-root *::before, .pixi-root *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Touch targets: small round icon buttons draw at 36px but accept taps across 44px. */
+@media (pointer: coarse) {
+  .pixi-root button:not(.absolute):not(.fixed):not(.sticky) { position: relative; }
+  .pixi-root button:not(.absolute):not(.fixed):not(.sticky)::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
+}
+
+/* Keyboard focus is visible; mouse and touch focus is not. */
+.pixi-root :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pixi-root :focus:not(:focus-visible) { outline: none; }
+/* Text fields show a caret; a ring around them as well is noise. */
+.pixi-root input[type="text"]:focus-visible,
+.pixi-root input:not([type]):focus-visible,
+.pixi-root textarea:focus-visible { outline: none; }
+
+/*
+ * Type scale. Eleven steps from Apple's Human Interface Guidelines, in rem, so text follows the
+ * person's own text size. Every screen uses these steps and nothing in between.
+ */
+.pixi-root .t-large   { font-size: 2.125rem; line-height: 1.2;  font-weight: 700; letter-spacing: -0.022em; }
+.pixi-root .t-title1  { font-size: 1.75rem;  line-height: 1.21; font-weight: 700; letter-spacing: -0.02em; }
+.pixi-root .t-title2  { font-size: 1.375rem; line-height: 1.27; font-weight: 700; letter-spacing: -0.016em; }
+.pixi-root .t-title3  { font-size: 1.25rem;  line-height: 1.25; font-weight: 600; letter-spacing: -0.012em; }
+.pixi-root .t-headline{ font-size: 1.0625rem;line-height: 1.29; font-weight: 600; letter-spacing: -0.008em; }
+.pixi-root .t-body    { font-size: 1.0625rem;line-height: 1.41; font-weight: 400; letter-spacing: -0.008em; }
+.pixi-root .t-callout { font-size: 1rem;     line-height: 1.31; font-weight: 400; }
+.pixi-root .t-subhead { font-size: 0.9375rem;line-height: 1.33; font-weight: 400; }
+.pixi-root .t-footnote{ font-size: 0.8125rem;line-height: 1.38; font-weight: 400; }
+.pixi-root .t-caption1{ font-size: 0.75rem;  line-height: 1.33; font-weight: 400; }
+.pixi-root .t-caption2{ font-size: 0.6875rem;line-height: 1.18; font-weight: 500; letter-spacing: 0.01em; }
